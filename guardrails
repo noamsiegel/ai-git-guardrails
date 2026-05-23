@@ -14,7 +14,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-GUARDRAILS_VERSION="0.3.3"
+GUARDRAILS_VERSION="0.3.4"
 GUARDRAILS_API_VERSION="guardrails.v0"
 
 # Resolve install dir. When run from brew, GUARDRAILS_HOME points at pkgshare.
@@ -293,7 +293,10 @@ cmd_run() {
       # consumes pre-push stdin for its templates), then exec lefthook with same.
       local tmp
       tmp=$(mktemp -t guardrails-prepush.XXXXXX)
-      trap 'rm -f "$tmp"' EXIT
+      # Double-quote so $tmp expands at trap-set time. Single quotes would
+      # defer expansion until the trap fires — by which point `local tmp`
+      # is out of scope and `set -u` aborts.
+      trap "rm -f '$tmp'" EXIT
       cat > "$tmp"
       if [[ -z "${SKIP_BRANCH_GUARD:-}" ]] && ! "$GUARDRAILS_TEMPLATES/checks/branch-guard.sh" < "$tmp"; then
         exit 1

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.4] — hotfix: trap unbound-variable in pre-push
+
+### Fixed
+- `cmd_run pre-push` set `trap 'rm -f $tmp' EXIT` with single quotes, deferring expansion. When the trap fired (after the function returned), `$tmp` was out of scope and `set -u` aborted with "tmp: unbound variable". Now double-quoted to expand at trap-set time.
+
 ## [0.3.3] — guardrails doctor --all (multi-repo audit)
 
 ### Added
