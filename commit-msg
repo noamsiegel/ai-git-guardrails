@@ -6,6 +6,15 @@
 
 set -euo pipefail
 
+# XDG init.sh: source user-owned script that can extend PATH or set env
+# before guardrails sanitization kicks in. Useful for asdf/mise/nvm/volta
+# users whose tools are not in the default PATH. See README for details.
+GUARDRAILS_INIT="${XDG_CONFIG_HOME:-$HOME/.config}/guardrails/init.sh"
+if [ -r "$GUARDRAILS_INIT" ]; then
+  # shellcheck source=/dev/null
+  . "$GUARDRAILS_INIT"
+fi
+
 # PATH sanitization: defend against ambient PATH hijack. Override with
 # GUARDRAILS_PATH if your tools live elsewhere (e.g. Linux distros).
 export PATH="${GUARDRAILS_PATH:-/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$HOME/.local/share/bun/bin:$HOME/.local/bin}"

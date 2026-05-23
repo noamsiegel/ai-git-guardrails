@@ -77,6 +77,20 @@ Set `GUARDRAILS_HOME` if guardrails lives somewhere other than
 export GUARDRAILS_HOME="$HOME/code/guardrails"
 ```
 
+## XDG init.sh
+
+If you use asdf, mise, nvm, volta, rbenv, or other PATH-manipulating
+version managers, the default sanitized PATH may not include your tools.
+Create `${XDG_CONFIG_HOME:-$HOME/.config}/guardrails/init.sh` to extend
+PATH before hooks run:
+
+```bash
+# ~/.config/guardrails/init.sh
+. "$HOME/.asdf/asdf.sh"  # or whatever your version manager needs
+```
+
+The script is sourced (not exec'd) so `export PATH=...` propagates correctly.
+
 For per-repo customization, use the standard tool config files:
 - `.gitleaksignore` for fingerprint-based gitleaks exceptions (safe, per-commit).
 - `.fallowrc.json` for fallow project config.
