@@ -1,107 +1,137 @@
 # git-guardrails Roadmap
 
-> Target architecture and quarterly milestones, derived from the
-> `improve-codebase-architecture` audit on 2026-05-23.
+> Current architecture history and next deepening opportunities. Load-bearing
+> invariants live in `CONTEXT.md`; release history lives in `CHANGELOG.md`.
 
-## Current state (v0.3.4)
+## Current state (v0.9.x)
 
-Single-file bash CLI (~700 LOC) + shipped assets in `checks/`, `lefthook.yml`,
-`commitlint.config.cjs`, `gitleaks.toml`. The 2026-05 audit found these
-structural issues (ordered by leverage):
+`git-guardrails` is a single-file Bash CLI plus shipped assets:
 
-1. **Hook state inferred 4 different ways** across `cmd_install` (lines 177–191), `cmd_uninstall` (lines 223–247), `_audit_repo` (lines 469–480), and `_is_ai_git_guardrails_hook`. Same domain concept (absent/ours/non-ours/shadowed/opt-out), four implementations.
-2. **`doctor --all` duplicates `doctor`** logic with a coarser classifier — invites drift where current-repo doctor says `present (not ours)` while `--all` buckets the same repo as `bypass`.
-3. **Stale legacy personal-hooks references** in `lefthook.yml`, `tests/git-guardrails.test.ts`, and `tests/git-guardrails.test.ts:303-310` (which shells out to the renamed PAI doctor path that no longer exists).
-4. **Compose-shim contract scattered** — `_generate_shim`, install help text, doctor `--all` bypass help, and the wt global hook bridge all emit slightly different paste-snippets with different `"$@"` / stdin / abort semantics.
-5. **Curated-check boundary is prose-only** — README + lefthook.yml + `cmd_doctor` tool list duplicate the same set of checks; no single registry.
-6. **Tests over-cover checks, under-cover lifecycle** — 8 branch-guard cases, near-zero coverage of install/uninstall/global-template.
+- `git-guardrails` — CLI, hook install/uninstall/run/doctor flows
+- `checks/registry.sh` — shell-readable shipped safety-check registry
+- `checks/*.sh` — concrete safety checks used by the shipped baseline
+- `lefthook.yml` — internal execution adapter for shipped hook checks
+- `gitleaks.toml`, `commitlint.config.cjs` — shipped tool baselines
+- `tests/git-guardrails.test.ts` — fixture tests over real temp repos
 
-## Target architecture
+The product boundary is a user-owned safety baseline. Repo-specific lint,
+format, typecheck, and test policy belongs in repo-owned hook config or CI.
+
+## Architecture already delivered
+
+### v0.4.0 — Hook-state classifier
+
+- Introduced `_classify_hook` and `_classify_repo_hooks` as the source of hook ownership state.
+- Routed install, uninstall, and doctor behavior through stable state words.
+- Added classifier coverage for absent, owned, non-owned, opt-out, and hooksPath-shadowed states.
+
+### v0.5.0 — Doctor unification and lifecycle coverage
+
+- Made `_audit_repo` emit structured records consumed by both current-repo `doctor` and `doctor --all`.
+- Added lifecycle coverage for install, uninstall, force install, skipped hooks, doctor agreement, and global template generation.
+
+### v0.6.0 — Compose-shim contract
+
+- Centralized embedded, standalone, and bypass-help snippets in `_compose_snippet`.
+- Preserved `"$@"`, stdin, and blocking exit behavior across generated and pasted hooks.
+- Added adapter tests for argument forwarding, pre-push stdin, and non-zero propagation.
+
+### v0.7.0 — Universal checks registry
+
+- Added `checks/registry.sh` as the source of shipped check metadata.
+- Built doctor reachability and bypass-help from registry entries.
+- Added parity tests for registry field shape, skip envs, and doctor tool output.
+
+### v0.9.x — Clean product boundary
+
+- Completed the `git-guardrails` naming cutover.
+- Removed Python and TS/JS language gates from the shipped default baseline.
+- Documented per-repo language hook patterns in `docs/PER_REPO_HOOKS.md`.
+- Renamed the all-check bypass env to `GIT_GUARDRAILS_SKIP`.
+
+## Current target shape
 
 ### Domain layer
 
-```
-_classify_hook <hooks_dir> <hook>  → one of: absent | ours | non-ours | shadowed | opt-out
-_classify_repo_hooks <repo>        → TSV: hook owner path hooksPath opt-out
-_compose_snippet <hook> <mode>     → canonical paste shim (one source of truth)
-_curated_check_registry            → tiny data file consumed by lefthook + doctor + README
+```text
+_classify_hook <hooks_dir> <hook>       → absent | ours | non-ours | shadowed | opt-out
+_classify_repo_hooks <repo>             → normalized hook-state records
+_audit_repo <repo>                      → one normalized repo audit record
+_compose_snippet <hook> <mode>          → canonical hook shim text
+checks/registry.sh                      → shipped safety-check metadata
 ```
 
 ### Adapter layer
 
-- Filesystem: only `_classify_*` reads hook files
-- `git config`: only `_classify_repo_hooks` reads `core.hooksPath`
-- lefthook/gitleaks/commitlint: only `cmd_run` invokes them
+- Filesystem hook inspection stays behind `_classify_*`.
+- `git config core.hooksPath` inspection stays behind `_classify_repo_hooks` / `_audit_repo`.
+- External tools (`lefthook`, `gitleaks`, `commitlint`, `fallow`) are invoked only through `cmd_run` and concrete check scripts.
+- Repo-owned language/toolchain hooks are documented examples, not shipped adapters.
 
 ### CLI layer
 
-`cmd_install` / `cmd_uninstall` / `cmd_doctor` / `cmd_doctor_all`
-all consume classifier records and render. `doctor --all` is
-`for repo in $(_find_git_repos); do _classify_repo_hooks "$repo"; done`
-with a summary renderer over the same data.
+`cmd_install`, `cmd_uninstall`, `cmd_doctor`, `cmd_doctor_all`, and
+`cmd_global_template` should render or mutate from domain records instead of
+re-inferring hook state or check metadata.
 
-## Milestones
+## Next deepening candidates
 
-### v0.4.0 — Stale-ref cleanup + hook classifier (Q1)
+### 1. Record codec locality
 
-**Goals**
+**Problem**: Unit-separator records are load-bearing, but emit/parse logic is still manual in several call sites.
 
-Part A (mechanical):
-- Fix `tests/git-guardrails.test.ts:303-310` to call `git-guardrails doctor --all` instead of the renamed PAI path.
+**Direction**: Add tiny private helpers for classifier/audit record emit and parse. Keep Bash and the current separator; do not introduce a broad serialization layer.
 
-Part B (foundation):
-- Introduce `_classify_hook` and `_classify_repo_hooks` returning stable state words.
-- `cmd_install`, `cmd_uninstall`, `_audit_repo`, `_is_ai_git_guardrails_hook` all route through the classifier.
-- Add table-style tests for each classifier state.
+**Acceptance**:
 
-**Files**
-- `git-guardrails` (the binary)
-- `lefthook.yml`
-- `tests/git-guardrails.test.ts`
+- Empty fields round-trip without shifting columns.
+- Field counts are asserted in tests.
+- Current classifier and doctor tests still pass.
 
-**Acceptance**
-- All existing 22 tests still pass.
-- New classifier returns correct state for: absent / git-guardrails-marked / non-ours / opt-out / local-hooksPath-bypass / global-hooksPath-bypass.
-- The legacy personal-hooks path string appears only in migration help text.
-- `git-guardrails --version` reports 0.4.0.
+### 2. Discovery/render split
 
-### v0.5.0 — Doctor unification + lifecycle tests (Q2)
+**Problem**: Some command functions still mix discovery, category decisions, and output rendering.
 
-**Goals**
-- `_audit_repo` returns a structured record; both `cmd_doctor` and `cmd_doctor_all` render from it.
-- Rebalance tests: collapse redundant branch-guard cases into table tests; add install/uninstall/global-template lifecycle fixtures.
+**Direction**: Make `_audit_repo` produce complete normalized facts once; make install/doctor renderers consume those facts.
 
-**Acceptance**
-- Per-repo doctor and `doctor --all` always agree on classification for the same repo.
-- Lifecycle test count ≥ check test count.
+**Acceptance**:
 
-### v0.6.0 — Compose-shim contract (Q3)
+- Current-repo doctor and `doctor --all` classification cannot drift for the same fixture.
+- Install conflict guidance consumes classifier/audit state instead of ad hoc hooksPath checks.
+- Lifecycle tests remain fixture-based.
 
-**Goals**
-- `_compose_snippet <hook> <mode>` becomes the single source for paste-shims.
-- Install warnings, doctor help, README examples, generated globals all call it.
-- Document the contract: blocking vs advisory, `"$@"` preserved, stdin preserved for pre-push.
+### 3. Registry execution contract
 
-**Acceptance**
-- All shim text in the repo (binary, README, generated globals) emits from `_compose_snippet`.
-- Adapter fixture proves a non-zero `git-guardrails run` aborts by default and pre-push stdin reaches `branch-guard`.
+**Problem**: `checks/registry.sh` owns metadata, while execution details still live across `lefthook.yml`, `cmd_run`, README, and tests.
 
-### v0.7.0 — Universals registry (Q4)
+**Direction**: Deepen the registry just enough to express shipped safety-check execution mode, such as `lefthook` versus direct pre-push stdin handling. Keep it universal-only; do not add plugin behavior.
 
-**Goals**
-- Tiny shell-readable data file naming each check: hook, command, skip env, required tools, rationale.
-- `cmd_doctor` tool reachability list and lefthook.yml comments generated from / cross-checked against it.
+**Acceptance**:
 
-**Acceptance**
-- Adding/removing a curated check is one registry edit.
-- Test asserts every skip env in registry exists in lefthook config (no orphans).
+- Branch-guard's direct pre-push stdin path is represented as registry data.
+- README rows and lefthook command coverage have parity tests against the registry.
+- Adding/removing a shipped safety check has one obvious edit point plus generated/parity artifacts.
+
+### 4. Documentation routing
+
+**Problem**: Architecture facts are split across `CONTEXT.md`, `ROADMAP.md`, README, and changelog. Drift can mislead future agents.
+
+**Direction**: Keep `CONTEXT.md` as invariants/ADRs, `CHANGELOG.md` as release history, README as user surface, and this file as current target shape plus next candidates.
+
+**Acceptance**:
+
+- No stale version-labeled “current state” sections.
+- No completed milestone listed as future work.
+- Architecture candidates cite current files and current public API names.
 
 ## Non-goals
 
-- **No project-specific lint, format, typecheck, test suites, or plugin-defined checks.** The curated user-owned safety baseline remains the product; Python and TS/JS quality hooks belong in repo-owned hook config or CI.
-- **No plugin system inside guardrails.** git-guardrails IS a plugin into other hook orchestrators (the compose-shim).
+- No project-specific lint, format, typecheck, test suites, or plugin-defined checks in the shipped baseline.
+- No plugin system inside git-guardrails; git-guardrails is itself a plugin into hook orchestrators.
+- No repo-local opt-out marker.
+- No shared cross-repo Bash helper library until a second concrete consumer needs the same API.
 
 ## Open questions
 
-- **bats vs TypeScript tests**: README claims bats; suite is TypeScript. Decide one for v0.5.0 lifecycle work.
-- **Homebrew-core graduation**: candidate after v0.5.0 if adoption signal exists.
+- Should Homebrew-core graduation still matter after the tap-based workflow is stable?
+- Should `fallow` remain a universal safety gate or move to per-repo guidance like other JS/TS quality tools?
