@@ -51,6 +51,7 @@ function git(repo: string, ...args: Array<string | SpawnSyncOptions>): SpawnResu
 }
 
 function testEnv(configHome: string): NodeJS.ProcessEnv {
+  const toolPath = `${REPO_ROOT}/node_modules/.bin:${process.env.PATH ?? ''}`;
   const globalNodePaths = [
     `${REPO_ROOT}/node_modules`,
     `${process.env.HOME}/.bun/install/global/node_modules`,
@@ -59,8 +60,9 @@ function testEnv(configHome: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
     AI_GIT_GUARDRAILS_TEMPLATES: REPO_ROOT,
+    AI_GIT_GUARDRAILS_PATH: toolPath,
     XDG_CONFIG_HOME: configHome,
-    PATH: `${REPO_ROOT}:${REPO_ROOT}/node_modules/.bin:${process.env.PATH ?? ''}`,
+    PATH: `${REPO_ROOT}:${toolPath}`,
     NODE_PATH: `${globalNodePaths.join(':')}${process.env.NODE_PATH ? `:${process.env.NODE_PATH}` : ''}`,
   };
 }
