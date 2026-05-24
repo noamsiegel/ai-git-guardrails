@@ -12,6 +12,7 @@ This file orients agents working on **ai-git-guardrails** itself. Read `CONTEXT.
 - Never add a repo-local opt-out marker. Repos must not be able to disable user-owned safety checks by committing a file.
 - Never make uninstall delete hooks unless `_classify_hook` returns `ours`.
 - Never weaken shipped config baselines in favor of repo-local config.
+- Dogfood `ai-trace`: AI-authored PRs must run `ai-trace pr-attach` and carry exactly one `🤖 ai-trace:` marker; direct emergency pushes without a PR must run `ai-trace gist-create` or `ai-trace collect` for local audit evidence.
 
 ## Docs index
 
