@@ -16,19 +16,19 @@ jobs:
           bun-version: latest
 
       - name: Install hook tools
+        # Runtime dependencies the binary expects + tools the bun:test
+        # fixtures shell out to.
         run: brew install lefthook gitleaks actionlint
-
-      - name: Install dependencies
-        run: bun install
 
       - name: Lint shell scripts
         run: |
-          bash -n pre-commit
-          bash -n pre-push
-          bash -n commit-msg
-          bash -n checks/large-files.sh
-          bash -n checks/branch-guard.sh
-          bash -n checks/fallow.sh
+          bash -n ai-git-guardrails
+          bash -n checks/registry.sh
+          for f in checks/*.sh; do bash -n "$f"; done
 
-      - name: Run bun-test suite
+      - name: Run test suite
+        # Tests use bun:test; no package.json required.
         run: bun test tests/ai-git-guardrails.test.ts
+
+      - name: Smoke check
+        run: ./ai-git-guardrails --version
