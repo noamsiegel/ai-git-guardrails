@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.9.1]
+
 ### Changed
 - Moved Python and TS/JS language gates out of the default git-guardrails baseline. `ruff`, `ty`, and `biome` are now documented as repo-owned hook/CI policy instead of user-owned safety checks.
 
