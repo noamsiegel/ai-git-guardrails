@@ -4,8 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.9.2]
+
 ### Changed
 - Renamed the all-check bypass environment variable from `SKIP_PERSONAL_HOOKS` to `GIT_GUARDRAILS_SKIP` to match the clean `git-guardrails` public API.
+
+### Fixed
+- `doctor --all` bypass guidance now emits the blocking compose snippet instead of advisory bypass-help text.
+
+### Documentation
+- Refreshed `ROADMAP.md` so future architecture work starts from the current v0.9.x state instead of completed v0.4-v0.7 milestones.
 
 ## [v0.9.1]
 
