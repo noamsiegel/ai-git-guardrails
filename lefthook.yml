@@ -2,17 +2,17 @@
 # guardrails: portable git-hook quality harness
 #
 # Policy: universals only. Lint/format/typecheck stay 100% repo-owned.
-# This file is portable: consumed locally as ~/.git-hooks-personal/lefthook.yml
+# This file is portable: consumed locally from the guardrails template directory
 # and intended to be `extends:`-ed from other repos (monorepo, OSS, etc.).
 #
-# Paths in `run:` commands use ${GUARDRAILS_HOME:-$HOME/.git-hooks-personal}
-# so consumers can vendor this file into any directory by setting GUARDRAILS_HOME
+# Paths in `run:` commands use ${GUARDRAILS_TEMPLATES:-$HOME/.config/guardrails/templates}
+# so consumers can vendor this file into any directory by setting GUARDRAILS_TEMPLATES
 # to that location.
 #
 # Bypass:
 #   - SKIP_PERSONAL_HOOKS=1 git commit          (skip everything)
 #   - SKIP_<CHECK>=1 git commit                  (per-check skip)
-#   - Repo path in $GUARDRAILS_HOME/.opt-out    (user-owned per-repo opt-out)
+#   - Repo path in $GUARDRAILS_TEMPLATES/.opt-out    (user-owned per-repo opt-out)
 #   - git commit --no-verify                     (nuclear; skips repo hooks too)
 
 assert_lefthook_installed: false  # invoked manually by entry shims, not git-installed
@@ -23,7 +23,7 @@ pre-commit:
   follow: true
   commands:
     gitleaks:
-      run: gitleaks protect --staged --no-banner --redact --verbose --config "${GUARDRAILS_HOME:-$HOME/.git-hooks-personal}/gitleaks.toml"
+      run: gitleaks protect --staged --no-banner --redact --verbose --config "${GUARDRAILS_TEMPLATES:-$HOME/.config/guardrails/templates}/gitleaks.toml"
       skip:
         - run: test -n "${SKIP_GITLEAKS:-}"
       stage_fixed: false
@@ -31,7 +31,7 @@ pre-commit:
         gitleaks found potential secrets in staged changes.
         Review the report above. For per-commit exceptions, use
         `.gitleaksignore` in the repo root (fingerprint-based, safe).
-        For cross-repo allowlists, edit $GUARDRAILS_HOME/gitleaks.toml.
+        For cross-repo allowlists, edit $GUARDRAILS_TEMPLATES/gitleaks.toml.
         Bypass: SKIP_GITLEAKS=1.
     actionlint:
       glob:
@@ -44,7 +44,7 @@ pre-commit:
         actionlint flagged issues in your GitHub Actions workflow YAML.
         Fix the diagnostics above, or bypass with SKIP_ACTIONLINT=1.
     large-files:
-      run: "${GUARDRAILS_HOME:-$HOME/.git-hooks-personal}/checks/large-files.sh -- {staged_files}"
+      run: "${GUARDRAILS_TEMPLATES:-$HOME/.config/guardrails/templates}/checks/large-files.sh -- {staged_files}"
       skip:
         - run: test -n "${SKIP_LARGE_FILES:-}"
       fail_text: |
@@ -56,7 +56,7 @@ pre-commit:
 commit-msg:
   commands:
     commitlint:
-      run: commitlint --edit {1} --config "${GUARDRAILS_HOME:-$HOME/.git-hooks-personal}/commitlint.config.cjs"
+      run: commitlint --edit {1} --config "${GUARDRAILS_TEMPLATES:-$HOME/.config/guardrails/templates}/commitlint.config.cjs"
       skip:
         - run: test -n "${SKIP_COMMITLINT:-}"
       fail_text: |
@@ -81,7 +81,7 @@ pre-push:
         - "*.jsx"
         - "*.mjs"
         - "*.cjs"
-      run: "${GUARDRAILS_HOME:-$HOME/.git-hooks-personal}/checks/fallow.sh"
+      run: "${GUARDRAILS_TEMPLATES:-$HOME/.config/guardrails/templates}/checks/fallow.sh"
       only:
         - run: test -f package.json
       skip:

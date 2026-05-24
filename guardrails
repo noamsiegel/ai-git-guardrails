@@ -6,7 +6,7 @@
 #   uninstall                              remove guardrails-managed hooks
 #   run <hook>                             execute the named hook (invoked by installed shims)
 #   doctor                                 self-check + tool reachability + enrolled-repos audit
-#   migrate [--apply]                      migrate from legacy ~/.git-hooks-personal/ install
+#   migrate [--apply]                      migrate from legacy global-hooksPath install
 #   --global-template                      configure git init.templateDir for auto-install on new clones
 #   --version | -V                         print version
 #
@@ -14,7 +14,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-GUARDRAILS_VERSION="0.3.4"
+GUARDRAILS_VERSION="0.4.0"
 GUARDRAILS_API_VERSION="guardrails.v0"
 
 # Resolve install dir. When run from brew, GUARDRAILS_HOME points at pkgshare.
@@ -89,10 +89,83 @@ _detect_hook_systems() {
   return 0
 }
 
-# Is the file at $1 owned by guardrails? (Marker present in file content.)
+_resolve_hookspath() {
+  local repo="$1" hookspath="$2"
+  [[ -n "$hookspath" ]] || return 1
+  case "$hookspath" in
+    /*) printf '%s' "$hookspath" ;;
+    *)  printf '%s/%s' "$repo" "$hookspath" ;;
+  esac
+}
+
+_repo_is_opted_out() {
+  local repo="$1" canonical
+  [[ -n "$repo" && -f "$GUARDRAILS_OPT_OUT" ]] || return 1
+  canonical=$(cd "$repo" 2>/dev/null && pwd -P) || return 1
+  grep -Fxq "$canonical" "$GUARDRAILS_OPT_OUT" 2>/dev/null
+}
+
+# Classify one hook file. Echoes: absent | ours | non-ours | shadowed | opt-out.
+_classify_hook() {
+  local hooks_dir="$1" hook="$2"
+  local repo local_hp global_hp active_hp target
+
+  repo=$(_repo_toplevel 2>/dev/null || true)
+  if [[ -n "$repo" ]] && _repo_is_opted_out "$repo"; then
+    echo "opt-out"
+    return 0
+  fi
+
+  if [[ -n "$repo" ]]; then
+    local_hp=$(_repo_local_hookspath)
+    global_hp=$(_repo_global_hookspath)
+    if [[ -n "$local_hp" ]]; then
+      active_hp=$(_resolve_hookspath "$repo" "$local_hp")
+    elif [[ -n "$global_hp" ]]; then
+      active_hp=$(_resolve_hookspath "$repo" "$global_hp")
+    else
+      active_hp="$hooks_dir"
+    fi
+    if [[ -n "$active_hp" && "$active_hp" != "$hooks_dir" ]]; then
+      echo "shadowed"
+      return 0
+    fi
+  fi
+
+  target="$hooks_dir/$hook"
+  if [[ ! -e "$target" ]]; then
+    echo "absent"
+  elif grep -Fq "$GUARDRAILS_HOOK_MARKER" "$target" 2>/dev/null; then
+    echo "ours"
+  else
+    echo "non-ours"
+  fi
+}
+
+# Classify all owned hooks for a repo. TSV: hook owner path hooksPath_local hooksPath_global opt_out
+_classify_repo_hooks() {
+  local repo="$1" hooks_dir local_hp global_hp opt_out hook owner path
+  hooks_dir=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  hooks_dir="$hooks_dir/hooks"
+  local_hp=$(git -C "$repo" config --local --get core.hooksPath 2>/dev/null || true)
+  global_hp=$(git -C "$repo" config --global --get core.hooksPath 2>/dev/null || true)
+  opt_out=0
+  _repo_is_opted_out "$repo" && opt_out=1
+
+  for hook in "${GUARDRAILS_HOOKS[@]}"; do
+    path="$hooks_dir/$hook"
+    owner=$(cd "$repo" && _classify_hook "$hooks_dir" "$hook")
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$hook" "$owner" "$path" "$local_hp" "$global_hp" "$opt_out"
+  done
+}
+
+# Is the file at $1 owned by guardrails?
 _is_guardrails_hook() {
-  [[ -f "$1" ]] || return 1
-  grep -Fq "$GUARDRAILS_HOOK_MARKER" "$1" 2>/dev/null
+  local hook_file="$1" hooks_dir hook
+  [[ -f "$hook_file" ]] || return 1
+  hooks_dir=$(dirname "$hook_file")
+  hook=$(basename "$hook_file")
+  [[ "$(_classify_hook "$hooks_dir" "$hook")" == "ours" ]]
 }
 
 # ---------- generate hook shim ----------
@@ -173,23 +246,25 @@ override redirects hooks elsewhere. Options:
       continue
     fi
 
-    local target="$hooks_dir/$hook"
-    if [[ -e "$target" ]]; then
-      if _is_guardrails_hook "$target"; then
+    local target="$hooks_dir/$hook" state
+    state=$(_classify_hook "$hooks_dir" "$hook")
+    case "$state" in
+      ours)
         # Re-install: re-generate to pick up latest version.
-
         rm -f "$target"
         _generate_shim "$hook" > "$target"
         chmod +x "$target"
         installed=$((installed + 1))
         continue
-      fi
-      if (( force == 0 )); then
-        warn "$hook already exists and is not managed by guardrails: $target"
-        conflicted=$((conflicted + 1))
-        continue
-      fi
-    fi
+        ;;
+      non-ours)
+        if (( force == 0 )); then
+          warn "$hook already exists and is not managed by guardrails: $target"
+          conflicted=$((conflicted + 1))
+          continue
+        fi
+        ;;
+    esac
     # Write via rm-then-create to never follow a symlink target.
     rm -f "$target"
     _generate_shim "$hook" > "$target"
@@ -221,14 +296,17 @@ cmd_uninstall() {
 
   local removed=0 not_ours=0
   for hook in "${GUARDRAILS_HOOKS[@]}"; do
-    local target="$hooks_dir/$hook"
-    [[ -e "$target" ]] || continue
-    if _is_guardrails_hook "$target"; then
-      rm -f "$target"
-      removed=$((removed + 1))
-    else
-      not_ours=$((not_ours + 1))
-    fi
+    local target="$hooks_dir/$hook" state
+    state=$(_classify_hook "$hooks_dir" "$hook")
+    case "$state" in
+      ours)
+        rm -f "$target"
+        removed=$((removed + 1))
+        ;;
+      non-ours)
+        not_ours=$((not_ours + 1))
+        ;;
+    esac
   done
 
   # If the local core.hooksPath we set during install now points at an empty
@@ -280,8 +358,8 @@ cmd_run() {
   # PATH sanitization (defense against hijack).
   export PATH="${GUARDRAILS_PATH:-/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$HOME/.local/share/bun/bin:$HOME/.local/bin}"
 
-  # Make GUARDRAILS_HOME visible to lefthook config (used for ${GUARDRAILS_HOME} expansions).
-  export GUARDRAILS_HOME="$GUARDRAILS_TEMPLATES"
+  # Make template path visible to lefthook config.
+  export GUARDRAILS_TEMPLATES="$GUARDRAILS_TEMPLATES"
 
   case "$hook" in
     commit-msg)
@@ -352,13 +430,15 @@ cmd_doctor() {
     local hooks_dir; hooks_dir=$(_repo_hooks_dir)
     for hook in "${GUARDRAILS_HOOKS[@]}"; do
       printf '%-40s' "$hook"
-      local target="$hooks_dir/$hook"
-      if [[ -f "$target" ]]; then
-        if _is_guardrails_hook "$target"; then green "installed (guardrails)\n"
-        else yellow "present (not ours)\n"; fi
-      else
-        dim "not installed\n"
-      fi
+      local state
+      state=$(_classify_hook "$hooks_dir" "$hook")
+      case "$state" in
+        ours) green "installed (guardrails)\n" ;;
+        non-ours) yellow "present (not ours)\n" ;;
+        shadowed) yellow "shadowed by core.hooksPath\n" ;;
+        opt-out) dim "opt-out\n" ;;
+        *) dim "not installed\n" ;;
+      esac
     done
     local lh; lh=$(_repo_local_hookspath)
     if [[ -n "$lh" ]]; then
@@ -454,32 +534,20 @@ _find_git_repos() {
 }
 
 _audit_repo() {
-  local repo="$1" canonical
-  # Canonicalize for opt-out comparison (macOS /var → /private/var).
-  canonical=$(cd "$repo" 2>/dev/null && pwd -P) || { echo "not-installed"; return; }
+  local repo="$1" row owner any_ours=0 any_shadowed=0 any_optout=0
+  _classify_repo_hooks "$repo" >/dev/null 2>&1 || { echo "not-installed"; return; }
 
-  if [[ -f "$GUARDRAILS_OPT_OUT" ]] && grep -Fxq "$canonical" "$GUARDRAILS_OPT_OUT"; then
-    echo "opt-out"; return
-  fi
+  while IFS=$'\t' read -r _hook owner _path _local_hp _global_hp _opt_out; do
+    case "$owner" in
+      ours) any_ours=1 ;;
+      shadowed) any_shadowed=1 ;;
+      opt-out) any_optout=1 ;;
+    esac
+  done < <(_classify_repo_hooks "$repo")
 
-  local hooks_dir
-  hooks_dir=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || { echo "not-installed"; return; }
-  hooks_dir="$hooks_dir/hooks"
-
-  # Check for guardrails marker in any of our hooks.
-  local hook
-  for hook in "${GUARDRAILS_HOOKS[@]}"; do
-    if [[ -f "$hooks_dir/$hook" ]] && grep -Fq "$GUARDRAILS_HOOK_MARKER" "$hooks_dir/$hook" 2>/dev/null; then
-      echo "installed"; return
-    fi
-  done
-
-  # Local hooksPath set + not ours = bypass.
-  local hp; hp=$(git -C "$repo" config --local --get core.hooksPath 2>/dev/null)
-  if [[ -n "$hp" ]]; then
-    echo "bypass"; return
-  fi
-
+  if (( any_optout == 1 )); then echo "opt-out"; return; fi
+  if (( any_ours == 1 )); then echo "installed"; return; fi
+  if (( any_shadowed == 1 )); then echo "bypass"; return; fi
   echo "not-installed"
 }
 
@@ -591,7 +659,7 @@ usage:
   guardrails uninstall               remove only guardrails-managed hooks
   guardrails run <hook>              execute the named hook (invoked by installed shims)
   guardrails doctor                  audit current repo + tool reachability
-  guardrails migrate [--apply]       migrate from legacy ~/.git-hooks-personal/ install
+  guardrails migrate [--apply]       migrate from legacy global-hooksPath install
   guardrails --global-template       configure git init.templateDir for auto-install on new clones
 
   guardrails --version | -V
@@ -609,4 +677,6 @@ bypass:
 EOF
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

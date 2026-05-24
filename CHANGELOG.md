@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] — stale-ref cleanup + hook classifier
+
+### Added
+- `_classify_hook` and `_classify_repo_hooks` centralize hook ownership state for install, uninstall, and doctor audit flows.
+- Classifier coverage for absent, guardrails-owned, non-guardrails, opt-out, and hooksPath-shadowed hooks.
+
+### Changed
+- `lefthook.yml` now resolves shipped assets through `${GUARDRAILS_TEMPLATES:-$HOME/.config/guardrails/templates}` instead of the legacy personal-hooks path.
+- Tests now exercise `guardrails doctor --all --root <tmpdir>` directly for worktree detection and use hermetic XDG config directories.
 ## [0.3.4] — hotfix: trap unbound-variable in pre-push
 
 ### Fixed
@@ -38,7 +47,7 @@ Bump GUARDRAILS_VERSION constant to match tag (was stuck at 0.3.0).
 - **`guardrails uninstall`** — removes only guardrails-managed hooks (marker-based). Restores `core.hooksPath` to global default if no other hooks remain.
 - **`guardrails run <hook>`** — the actual hook logic, invoked by installed shims. Delegates to `lefthook run` with shipped config.
 - **`guardrails doctor`** — audits the current repo + tool reachability under sanitized PATH.
-- **`guardrails migrate [--apply]`** — migrates from legacy `~/.git-hooks-personal/` install. Defaults to dry-run; `--apply` performs the migration.
+- **`guardrails migrate [--apply]`** — migrates from legacy global-hooksPath install. Defaults to dry-run; `--apply` performs the migration.
 - **`guardrails --global-template`** — wires `git init.templateDir` so new clones auto-install guardrails hooks.
 - **`--force` flag** on install to override conflicts.
 - **`--skip <hook>` flag** to install a subset.

@@ -1,7 +1,7 @@
 /**
  * guardrails fixture-based test suite.
  *
- * Run: bun test ~/.git-hooks-personal/tests/guardrails.test.ts
+ * Run: bun test tests/guardrails.test.ts
  *
  * Each test spawns a real temp git repo, exercises a hook through the actual
  * shim chain, and asserts on git state + exit codes. No mocks. The repos are
@@ -12,9 +12,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { spawnSync, type SpawnSyncOptions } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const HOOKS_HOME = `${process.env.HOME}/.git-hooks-personal`;
+const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const GUARDRAILS = join(REPO_ROOT, 'guardrails');
 // Build the test key at runtime so GitHub's secret scanner doesn't flag this
 // source file. Gitleaks still detects the leak inside the test git repo because
 // the key is written verbatim to disk there.
@@ -44,12 +46,32 @@ function git(repo: string, ...args: Array<string | SpawnSyncOptions>): SpawnResu
   return run('git', ['-C', repo, ...(args as string[])], opts);
 }
 
+function testEnv(configHome: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    GUARDRAILS_TEMPLATES: REPO_ROOT,
+    XDG_CONFIG_HOME: configHome,
+    PATH: `${REPO_ROOT}:${process.env.PATH ?? ''}`,
+    NODE_PATH: `${process.env.HOME}/.local/share/bun/install/global/node_modules${process.env.NODE_PATH ? `:${process.env.NODE_PATH}` : ''}`,
+  };
+}
+
 function newRepo(): string {
   const dir = mkdtempSync(join(tmpdir(), 'guardrails-test-'));
+  const configHome = join(dir, 'xdg');
+  mkdirSync(configHome, { recursive: true });
   git(dir, 'init', '-q', '-b', 'main');
   git(dir, 'config', 'user.email', 'test@example.com');
   git(dir, 'config', 'user.name', 'guardrails-test');
+  const install = run(GUARDRAILS, ['install', '--force'], { cwd: dir, env: testEnv(configHome) });
+  if (install.status !== 0) {
+    throw new Error(`guardrails install failed: ${install.stderr || install.stdout}`);
+  }
   return dir;
+}
+
+function envForRepo(repo: string, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  return { ...testEnv(join(repo, 'xdg')), ...extra };
 }
 
 function cleanup(dir: string) {
@@ -80,7 +102,7 @@ regexes = ['''.*''']
 `);
     writeFileSync(join(repo, 'leak.ts'), STRIPE_KEY_LIKE);
     git(repo, 'add', 'leak.ts', '.gitleaks.toml');
-    const r = git(repo, 'commit', '-m', 'feat: add');
+    const r = git(repo, 'commit', '-m', 'feat: add', { env: envForRepo(repo) });
     expect(r.status).not.toBe(0);
     expect(commitCount(repo)).toBe(0);
   });
@@ -88,20 +110,20 @@ regexes = ['''.*''']
   test('SKIP_GITLEAKS=1 bypasses gitleaks but other checks still run', () => {
     writeFileSync(join(repo, 'leak.ts'), STRIPE_KEY_LIKE);
     git(repo, 'add', 'leak.ts');
-    const r = git(repo, 'commit', '-m', 'feat: ok', { env: { ...process.env, SKIP_GITLEAKS: '1' } });
+    const r = git(repo, 'commit', '-m', 'feat: ok', { env: envForRepo(repo, { SKIP_GITLEAKS: '1' }) });
     expect(r.status).toBe(0);
   });
 });
 
 describe('R6 — branch-guard list-vs-regex API', () => {
-  const guard = `${HOOKS_HOME}/checks/branch-guard.sh`;
+  const guard = join(REPO_ROOT, 'checks', 'branch-guard.sh');
   const ZERO = '0'.repeat(40);
   const ONE = '1'.repeat(40);
 
   function runGuard(stdin: string, env: Record<string, string> = {}): SpawnResult {
     return run(guard, [], {
       input: stdin,
-      env: { ...process.env, ...env },
+      env: { ...testEnv(mkdtempSync(join(tmpdir(), 'guardrails-xdg-'))), ...env },
     });
   }
 
@@ -157,7 +179,7 @@ describe('R7 — large-files inspects STAGED blob, not worktree', () => {
     git(repo, 'add', 'big.bin');
     // Now truncate worktree file. Staged blob still 6MB.
     writeFileSync(join(repo, 'big.bin'), 'tiny');
-    const r = git(repo, 'commit', '-m', 'feat: x');
+    const r = git(repo, 'commit', '-m', 'feat: x', { env: envForRepo(repo) });
     expect(r.status).not.toBe(0);
     expect(commitCount(repo)).toBe(0);
   });
@@ -166,12 +188,12 @@ describe('R7 — large-files inspects STAGED blob, not worktree', () => {
     // Need an initial commit so lefthook can stash unstaged changes.
     writeFileSync(join(repo, 'init.txt'), 'init');
     git(repo, 'add', 'init.txt');
-    git(repo, 'commit', '-m', 'feat: init');
+    git(repo, 'commit', '-m', 'feat: init', { env: envForRepo(repo) });
 
     writeFileSync(join(repo, 'tiny.txt'), 'small');
     git(repo, 'add', 'tiny.txt');
     writeFileSync(join(repo, 'tiny.txt'), Buffer.alloc(10 * 1024 * 1024));
-    const r = git(repo, 'commit', '-m', 'feat: small');
+    const r = git(repo, 'commit', '-m', 'feat: small', { env: envForRepo(repo) });
     expect(r.status).toBe(0);
     expect(commitCount(repo)).toBe(2);
   });
@@ -179,7 +201,7 @@ describe('R7 — large-files inspects STAGED blob, not worktree', () => {
   test('LARGE_FILE_LIMIT_MB=20 raises threshold', () => {
     writeFileSync(join(repo, 'big.bin'), Buffer.alloc(6 * 1024 * 1024));
     git(repo, 'add', 'big.bin');
-    const r = git(repo, 'commit', '-m', 'feat: big', { env: { ...process.env, LARGE_FILE_LIMIT_MB: '20' } });
+    const r = git(repo, 'commit', '-m', 'feat: big', { env: envForRepo(repo, { LARGE_FILE_LIMIT_MB: '20' }) });
     expect(r.status).toBe(0);
   });
 });
@@ -192,7 +214,7 @@ describe('Bypass envvar surface', () => {
   test('SKIP_PERSONAL_HOOKS=1 skips guardrails entirely', () => {
     writeFileSync(join(repo, 'leak.ts'), STRIPE_KEY_LIKE);
     git(repo, 'add', 'leak.ts');
-    const r = git(repo, 'commit', '-m', 'bad msg', { env: { ...process.env, SKIP_PERSONAL_HOOKS: '1' } });
+    const r = git(repo, 'commit', '-m', 'bad msg', { env: envForRepo(repo, { SKIP_PERSONAL_HOOKS: '1' }) });
     // commitlint would normally block "bad msg" too, but it's also skipped.
     expect(r.status).toBe(0);
   });
@@ -209,24 +231,20 @@ describe('Bypass envvar surface', () => {
     // canonicalizes /var/folders/... → /private/var/folders/... on macOS.
     // Use the same canonical form when writing the opt-out file.
     const canonical = git(repo, 'rev-parse', '--show-toplevel').stdout.trim();
-    const optOutFile = `${HOOKS_HOME}/.opt-out`;
-    const before = run('cat', [optOutFile]).stdout;
-    try {
-      writeFileSync(optOutFile, (before ? before + '\n' : '') + canonical + '\n');
-      writeFileSync(join(repo, 'leak.ts'), STRIPE_KEY_LIKE);
-      git(repo, 'add', 'leak.ts');
-      const r = git(repo, 'commit', '-m', 'feat: ok');
-      expect(r.status).toBe(0);
-    } finally {
-      writeFileSync(optOutFile, before);
-    }
+    const optOutDir = join(repo, 'xdg', 'guardrails');
+    mkdirSync(optOutDir, { recursive: true });
+    writeFileSync(join(optOutDir, '.opt-out'), `${canonical}\n`);
+    writeFileSync(join(repo, 'leak.ts'), STRIPE_KEY_LIKE);
+    git(repo, 'add', 'leak.ts');
+    const r = git(repo, 'commit', '-m', 'feat: ok', { env: envForRepo(repo) });
+    expect(r.status).toBe(0);
   });
 
   test('in-repo .no-personal-hooks marker does NOT opt out (R1)', () => {
     writeFileSync(join(repo, '.no-personal-hooks'), '');
     writeFileSync(join(repo, 'leak.ts'), STRIPE_KEY_LIKE);
     git(repo, 'add', '.no-personal-hooks', 'leak.ts');
-    const r = git(repo, 'commit', '-m', 'feat: x');
+    const r = git(repo, 'commit', '-m', 'feat: x', { env: envForRepo(repo) });
     expect(r.status).not.toBe(0);
   });
 });
@@ -239,7 +257,7 @@ describe('R3 — env var poisoning cannot disable hooks', () => {
   test('ambient WT_HOOK_RUNNING=1 alone does NOT bypass', () => {
     writeFileSync(join(repo, 'leak.ts'), STRIPE_KEY_LIKE);
     git(repo, 'add', 'leak.ts');
-    const r = git(repo, 'commit', '-m', 'feat: x', { env: { ...process.env, WT_HOOK_RUNNING: '1' } });
+    const r = git(repo, 'commit', '-m', 'feat: x', { env: envForRepo(repo, { WT_HOOK_RUNNING: '1' }) });
     expect(r.status).not.toBe(0);
     expect(commitCount(repo)).toBe(0);
   });
@@ -253,21 +271,21 @@ describe('Conventional commits gating', () => {
   test('clean conventional commit succeeds', () => {
     writeFileSync(join(repo, 'a.txt'), 'a');
     git(repo, 'add', 'a.txt');
-    const r = git(repo, 'commit', '-m', 'feat: clean commit message');
+    const r = git(repo, 'commit', '-m', 'feat: clean commit message', { env: envForRepo(repo) });
     expect(r.status).toBe(0);
   });
 
   test('non-conventional commit blocked', () => {
     writeFileSync(join(repo, 'a.txt'), 'a');
     git(repo, 'add', 'a.txt');
-    const r = git(repo, 'commit', '-m', 'no convention here');
+    const r = git(repo, 'commit', '-m', 'no convention here', { env: envForRepo(repo) });
     expect(r.status).not.toBe(0);
   });
 
   test('SKIP_COMMITLINT=1 bypasses', () => {
     writeFileSync(join(repo, 'a.txt'), 'a');
     git(repo, 'add', 'a.txt');
-    const r = git(repo, 'commit', '-m', 'bad', { env: { ...process.env, SKIP_COMMITLINT: '1' } });
+    const r = git(repo, 'commit', '-m', 'bad', { env: envForRepo(repo, { SKIP_COMMITLINT: '1' }) });
     expect(r.status).toBe(0);
   });
 });
@@ -283,12 +301,16 @@ describe('Doctor handles worktrees correctly', () => {
     scanRoot = mkdtempSync(join(tmpdir(), 'guardrails-doctor-'));
     parent = join(scanRoot, 'parent');
     mkdirSync(parent);
-    spawnSync('git', ['-C', parent, 'init', '-q', '-b', 'main']);
-    spawnSync('git', ['-C', parent, 'config', 'user.email', 't@e.com']);
-    spawnSync('git', ['-C', parent, 'config', 'user.name', 't']);
+    git(parent, 'init', '-q', '-b', 'main');
+    git(parent, 'config', 'user.email', 't@e.com');
+    git(parent, 'config', 'user.name', 't');
     writeFileSync(join(parent, 'x'), 'x');
     git(parent, 'add', 'x');
     git(parent, 'commit', '-q', '-m', 'feat: init');
+    const configHome = join(scanRoot, 'xdg');
+    mkdirSync(configHome, { recursive: true });
+    const install = run(GUARDRAILS, ['install', '--force'], { cwd: parent, env: testEnv(configHome) });
+    expect(install.status).toBe(0);
     git(parent, 'branch', 'other');
     wt = join(scanRoot, 'wt');
     git(parent, 'worktree', 'add', wt, 'other');
@@ -301,12 +323,62 @@ describe('Doctor handles worktrees correctly', () => {
   });
 
   test('worktree (with .git file, not directory) is detected as enrolled', () => {
-    const r = run('bun', [`${process.env.HOME}/.pai/skills/personal-hooks/doctor.ts`, '--root', scanRoot, '--json']);
+    const r = run(GUARDRAILS, ['doctor', '--all', '--root', scanRoot], { env: testEnv(join(scanRoot, 'xdg')) });
     expect(r.status).toBe(0);
-    const data = JSON.parse(r.stdout);
-    const reports = data.reports as Array<{ path: string; category: string }>;
-    const found = reports.filter((r) => r.path === parentCanonical || r.path === wtCanonical);
-    expect(found.length).toBeGreaterThanOrEqual(2);
-    expect(found.every((r) => r.category === 'chain-enrolled')).toBe(true);
+    expect(r.stdout).toContain('2 repos');
+    expect(r.stdout).toContain('  ✓ parent');
+    expect(r.stdout).toContain('  ✓ wt');
+    expect(r.stdout).toContain('2 installed');
+  });
+});
+
+
+describe('hook classifier', () => {
+  let repo: string;
+
+  beforeEach(() => { repo = newRepo(); });
+  afterEach(() => cleanup(repo));
+
+  function hooksDir(): string {
+    return git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir').stdout.trim() + '/hooks';
+  }
+
+  function classify(hook: string, env: NodeJS.ProcessEnv = envForRepo(repo)): SpawnResult {
+    return run('bash', ['-c', `source "${GUARDRAILS}"; _classify_hook "${hooksDir()}" "${hook}"`], { cwd: repo, env });
+  }
+
+  test('absent', () => {
+    rmSync(join(hooksDir(), 'pre-commit'), { force: true });
+    expect(classify('pre-commit').stdout.trim()).toBe('absent');
+  });
+
+  test('ours', () => {
+    expect(classify('pre-commit').stdout.trim()).toBe('ours');
+  });
+
+  test('non-ours', () => {
+    writeFileSync(join(hooksDir(), 'pre-commit'), '#!/usr/bin/env bash\necho external\n');
+    expect(classify('pre-commit').stdout.trim()).toBe('non-ours');
+  });
+
+  test('opt-out', () => {
+    const optOutDir = join(repo, 'xdg', 'guardrails');
+    mkdirSync(optOutDir, { recursive: true });
+    const canonical = git(repo, 'rev-parse', '--show-toplevel').stdout.trim();
+    writeFileSync(join(optOutDir, '.opt-out'), `${canonical}\n`);
+    expect(classify('pre-commit').stdout.trim()).toBe('opt-out');
+  });
+
+  test('shadowed by local core.hooksPath', () => {
+    git(repo, 'config', '--local', 'core.hooksPath', '.custom-hooks');
+    expect(classify('pre-commit').stdout.trim()).toBe('shadowed');
+  });
+
+  test('shadowed by global core.hooksPath', () => {
+    const home = mkdtempSync(join(tmpdir(), 'guardrails-home-'));
+    git(repo, 'config', '--local', '--unset', 'core.hooksPath');
+    run('git', ['config', '--global', 'core.hooksPath', '.global-hooks'], { env: { ...envForRepo(repo), HOME: home } });
+    expect(classify('pre-commit', { ...envForRepo(repo), HOME: home }).stdout.trim()).toBe('shadowed');
+    cleanup(home);
   });
 });

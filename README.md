@@ -60,7 +60,7 @@ guardrails install [--force] [--skip <hook>]   # install hooks in current repo
 guardrails uninstall                            # remove only ours-marked hooks
 guardrails doctor                               # audit current repo + tool reachability
 guardrails run <hook>                           # invoked by installed shims
-guardrails migrate [--apply]                    # migrate from legacy ~/.git-hooks-personal/
+guardrails migrate [--apply]                    # migrate from legacy global-hooksPath install
 guardrails --global-template                    # auto-install on new clones
 guardrails --version
 ```
