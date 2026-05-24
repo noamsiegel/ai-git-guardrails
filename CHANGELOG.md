@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] — doctor unification + lifecycle coverage
+
+### Added
+- `_audit_repo` now emits one structured TSV record consumed by both current-repo `doctor` and `doctor --all`.
+- Lifecycle tests cover install, uninstall, force install, skipped hooks, migration dry-run/apply, doctor detail/summary agreement, and global template generation.
+
+### Changed
+- `doctor --all` uses the same classifier-derived categories as `doctor`: installed, not-installed, bypass-other, and opt-out.
+- `guardrails install` always sets local `core.hooksPath` to the repo hooks directory it manages.
+- Branch guard, large-file, and commitlint checks are table-driven where behavior was redundant.
+
 ## [0.4.0] — stale-ref cleanup + hook classifier
 
 ### Added

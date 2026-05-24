@@ -10,7 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { spawnSync, type SpawnSyncOptions } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -70,6 +70,20 @@ function newRepo(): string {
   return dir;
 }
 
+function newBareRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'guardrails-test-'));
+  const configHome = join(dir, 'xdg');
+  mkdirSync(configHome, { recursive: true });
+  git(dir, 'init', '-q', '-b', 'main');
+  git(dir, 'config', 'user.email', 'test@example.com');
+  git(dir, 'config', 'user.name', 'guardrails-test');
+  return dir;
+}
+
+function hooksDir(repo: string): string {
+  return git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir').stdout.trim() + '/hooks';
+}
+
 function envForRepo(repo: string, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   return { ...testEnv(join(repo, 'xdg')), ...extra };
 }
@@ -127,43 +141,22 @@ describe('R6 — branch-guard list-vs-regex API', () => {
     });
   }
 
-  test('default regex blocks main', () => {
-    const r = runGuard(`refs/heads/main ${ONE} refs/heads/main ${ZERO}\n`);
-    expect(r.status).toBe(1);
-  });
-  test('default regex does NOT match "domain" (substring concern)', () => {
-    const r = runGuard(`refs/heads/domain ${ONE} refs/heads/domain ${ZERO}\n`);
-    expect(r.status).toBe(0);
-  });
-  test('default regex does NOT match "feature-main"', () => {
-    const r = runGuard(`refs/heads/feature-main ${ONE} refs/heads/feature-main ${ZERO}\n`);
-    expect(r.status).toBe(0);
-  });
-  test('LIST mode: comma-separated exact match', () => {
-    const r = runGuard(`refs/heads/develop ${ONE} refs/heads/develop ${ZERO}\n`, {
-      PROTECTED_BRANCHES_LIST: 'main,develop',
-    });
-    expect(r.status).toBe(1);
-  });
-  test('LIST mode: "main" does NOT match "domain"', () => {
-    const r = runGuard(`refs/heads/domain ${ONE} refs/heads/domain ${ZERO}\n`, {
-      PROTECTED_BRANCHES_LIST: 'main',
-    });
-    expect(r.status).toBe(0);
-  });
-  test('tag pushes are ignored', () => {
-    const r = runGuard(`refs/tags/v1 ${ONE} refs/tags/v1 ${ZERO}\n`);
-    expect(r.status).toBe(0);
-  });
-  test('branch deletions are ignored', () => {
-    const r = runGuard(`refs/heads/main ${ZERO} refs/heads/main ${ONE}\n`);
-    expect(r.status).toBe(0);
-  });
-  test('ALLOW_PROTECTED_PUSH=1 bypasses', () => {
-    const r = runGuard(`refs/heads/main ${ONE} refs/heads/main ${ZERO}\n`, {
-      ALLOW_PROTECTED_PUSH: '1',
-    });
-    expect(r.status).toBe(0);
+  test('protected-ref decisions are exact and bypassable', () => {
+    const cases: Array<[string, string, Record<string, string> | undefined, number]> = [
+      ['default regex blocks main', `refs/heads/main ${ONE} refs/heads/main ${ZERO}\n`, undefined, 1],
+      ['default regex does not match domain', `refs/heads/domain ${ONE} refs/heads/domain ${ZERO}\n`, undefined, 0],
+      ['default regex does not match feature-main', `refs/heads/feature-main ${ONE} refs/heads/feature-main ${ZERO}\n`, undefined, 0],
+      ['LIST mode exact match blocks develop', `refs/heads/develop ${ONE} refs/heads/develop ${ZERO}\n`, { PROTECTED_BRANCHES_LIST: 'main,develop' }, 1],
+      ['LIST mode main does not match domain', `refs/heads/domain ${ONE} refs/heads/domain ${ZERO}\n`, { PROTECTED_BRANCHES_LIST: 'main' }, 0],
+      ['tag pushes are ignored', `refs/tags/v1 ${ONE} refs/tags/v1 ${ZERO}\n`, undefined, 0],
+      ['branch deletions are ignored', `refs/heads/main ${ZERO} refs/heads/main ${ONE}\n`, undefined, 0],
+      ['ALLOW_PROTECTED_PUSH bypasses', `refs/heads/main ${ONE} refs/heads/main ${ZERO}\n`, { ALLOW_PROTECTED_PUSH: '1' }, 0],
+    ];
+
+    for (const [name, stdin, env, status] of cases) {
+      const r = runGuard(stdin, env);
+      expect(r.status, name).toBe(status);
+    }
   });
 });
 
@@ -172,37 +165,25 @@ describe('R7 — large-files inspects STAGED blob, not worktree', () => {
   beforeEach(() => { repo = newRepo(); });
   afterEach(() => cleanup(repo));
 
-  test('staging 6MB then truncating worktree still blocks', () => {
-    // Stage a 6MB blob.
-    const big = Buffer.alloc(6 * 1024 * 1024);
-    writeFileSync(join(repo, 'big.bin'), big);
+  test('staged-blob size logic uses staged content and threshold override', () => {
+    writeFileSync(join(repo, 'big.bin'), Buffer.alloc(6 * 1024 * 1024));
     git(repo, 'add', 'big.bin');
-    // Now truncate worktree file. Staged blob still 6MB.
     writeFileSync(join(repo, 'big.bin'), 'tiny');
-    const r = git(repo, 'commit', '-m', 'feat: x', { env: envForRepo(repo) });
-    expect(r.status).not.toBe(0);
+    const blocked = git(repo, 'commit', '-m', 'feat: x', { env: envForRepo(repo) });
+    expect(blocked.status).not.toBe(0);
     expect(commitCount(repo)).toBe(0);
-  });
+    git(repo, 'reset', '-q');
 
-  test('small staged blob + large unstaged worktree passes', () => {
-    // Need an initial commit so lefthook can stash unstaged changes.
-    writeFileSync(join(repo, 'init.txt'), 'init');
-    git(repo, 'add', 'init.txt');
-    git(repo, 'commit', '-m', 'feat: init', { env: envForRepo(repo) });
+    writeFileSync(join(repo, 'allowed.bin'), Buffer.alloc(6 * 1024 * 1024));
+    git(repo, 'add', 'allowed.bin');
+    const allowedByEnv = git(repo, 'commit', '-m', 'feat: big', { env: envForRepo(repo, { LARGE_FILE_LIMIT_MB: '20' }) });
+    expect(allowedByEnv.status).toBe(0);
 
     writeFileSync(join(repo, 'tiny.txt'), 'small');
     git(repo, 'add', 'tiny.txt');
     writeFileSync(join(repo, 'tiny.txt'), Buffer.alloc(10 * 1024 * 1024));
-    const r = git(repo, 'commit', '-m', 'feat: small', { env: envForRepo(repo) });
-    expect(r.status).toBe(0);
-    expect(commitCount(repo)).toBe(2);
-  });
-
-  test('LARGE_FILE_LIMIT_MB=20 raises threshold', () => {
-    writeFileSync(join(repo, 'big.bin'), Buffer.alloc(6 * 1024 * 1024));
-    git(repo, 'add', 'big.bin');
-    const r = git(repo, 'commit', '-m', 'feat: big', { env: envForRepo(repo, { LARGE_FILE_LIMIT_MB: '20' }) });
-    expect(r.status).toBe(0);
+    const stagedSmall = git(repo, 'commit', '-m', 'feat: small', { env: envForRepo(repo) });
+    expect(stagedSmall.status).toBe(0);
   });
 });
 
@@ -268,25 +249,165 @@ describe('Conventional commits gating', () => {
   beforeEach(() => { repo = newRepo(); });
   afterEach(() => cleanup(repo));
 
-  test('clean conventional commit succeeds', () => {
+  test('conventional commit decisions and bypass', () => {
     writeFileSync(join(repo, 'a.txt'), 'a');
     git(repo, 'add', 'a.txt');
-    const r = git(repo, 'commit', '-m', 'feat: clean commit message', { env: envForRepo(repo) });
+    const clean = git(repo, 'commit', '-m', 'feat: clean commit message', { env: envForRepo(repo) });
+    expect(clean.status).toBe(0);
+
+    writeFileSync(join(repo, 'b.txt'), 'b');
+    git(repo, 'add', 'b.txt');
+    const blocked = git(repo, 'commit', '-m', 'no convention here', { env: envForRepo(repo) });
+    expect(blocked.status).not.toBe(0);
+
+    const bypassRepo = newRepo();
+    try {
+      writeFileSync(join(bypassRepo, 'c.txt'), 'c');
+      git(bypassRepo, 'add', 'c.txt');
+      const bypass = git(bypassRepo, 'commit', '-m', 'bad', { env: envForRepo(bypassRepo, { SKIP_COMMITLINT: '1' }) });
+      expect(bypass.status).toBe(0);
+    } finally {
+      cleanup(bypassRepo);
+    }
+  });
+});
+
+describe('Lifecycle commands', () => {
+  let repo: string;
+
+  afterEach(() => cleanup(repo));
+
+  test('install writes owned hooks and sets local core.hooksPath', () => {
+    repo = newBareRepo();
+    const r = run(GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) });
     expect(r.status).toBe(0);
+
+    const dir = hooksDir(repo);
+    expect(git(repo, 'config', '--local', '--get', 'core.hooksPath').stdout.trim()).toBe(dir);
+    for (const hook of ['pre-commit', 'pre-push', 'commit-msg']) {
+      expect(readFileSync(join(dir, hook), 'utf8')).toContain('# guardrails-managed: guardrails.v0');
+    }
   });
 
-  test('non-conventional commit blocked', () => {
-    writeFileSync(join(repo, 'a.txt'), 'a');
-    git(repo, 'add', 'a.txt');
-    const r = git(repo, 'commit', '-m', 'no convention here', { env: envForRepo(repo) });
-    expect(r.status).not.toBe(0);
+  test('uninstall preserves non-ours hooks and keeps non-guardrails hooksPath', () => {
+    repo = newBareRepo();
+    const dir = join(repo, '.custom-hooks');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'pre-commit'), '#!/usr/bin/env bash\necho custom\n');
+    git(repo, 'config', '--local', 'core.hooksPath', '.custom-hooks');
+
+    const r = run(GUARDRAILS, ['uninstall'], { cwd: repo, env: envForRepo(repo) });
+    expect(r.status).toBe(0);
+    expect(readFileSync(join(dir, 'pre-commit'), 'utf8')).toContain('echo custom');
+    expect(git(repo, 'config', '--local', '--get', 'core.hooksPath').stdout.trim()).toBe('.custom-hooks');
   });
 
-  test('SKIP_COMMITLINT=1 bypasses', () => {
-    writeFileSync(join(repo, 'a.txt'), 'a');
-    git(repo, 'add', 'a.txt');
-    const r = git(repo, 'commit', '-m', 'bad', { env: envForRepo(repo, { SKIP_COMMITLINT: '1' }) });
+  test('uninstall removes owned hooks and unsets guardrails-owned hooksPath', () => {
+    repo = newBareRepo();
+    expect(run(GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) }).status).toBe(0);
+    const dir = hooksDir(repo);
+
+    const r = run(GUARDRAILS, ['uninstall'], { cwd: repo, env: envForRepo(repo) });
     expect(r.status).toBe(0);
+    expect(existsSync(join(dir, 'pre-commit'))).toBe(false);
+    expect(git(repo, 'config', '--local', '--get', 'core.hooksPath').status).not.toBe(0);
+  });
+
+  test('install --force replaces a conflicting hook', () => {
+    repo = newBareRepo();
+    const dir = hooksDir(repo);
+    writeFileSync(join(dir, 'pre-commit'), '#!/usr/bin/env bash\necho external\n');
+
+    const refused = run(GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) });
+    expect(refused.stdout + refused.stderr).toContain('conflicts: 1');
+
+    const forced = run(GUARDRAILS, ['install', '--force'], { cwd: repo, env: envForRepo(repo) });
+    expect(forced.status).toBe(0);
+    expect(readFileSync(join(dir, 'pre-commit'), 'utf8')).toContain('# guardrails-managed: guardrails.v0');
+  });
+
+  test('install --skip excludes requested hook', () => {
+    repo = newBareRepo();
+    const r = run(GUARDRAILS, ['install', '--skip', 'pre-push'], { cwd: repo, env: envForRepo(repo) });
+    expect(r.status).toBe(0);
+
+    const dir = hooksDir(repo);
+    expect(existsSync(join(dir, 'pre-commit'))).toBe(true);
+    expect(existsSync(join(dir, 'pre-push'))).toBe(false);
+    expect(existsSync(join(dir, 'commit-msg'))).toBe(true);
+  });
+
+  test('migrate dry-run reports changes without applying', () => {
+    repo = newBareRepo();
+    const home = mkdtempSync(join(tmpdir(), 'guardrails-home-'));
+    const legacy = join(home, '.git-hooks-personal');
+    mkdirSync(legacy, { recursive: true });
+    run('git', ['config', '--global', 'core.hooksPath', legacy], { env: { ...envForRepo(repo), HOME: home } });
+
+    const r = run(GUARDRAILS, ['migrate'], { cwd: repo, env: { ...envForRepo(repo), HOME: home } });
+    expect(r.status).toBe(0);
+    expect(r.stdout + r.stderr).toContain('DRY RUN');
+    expect(run('git', ['config', '--global', '--get', 'core.hooksPath'], { env: { ...envForRepo(repo), HOME: home } }).stdout.trim()).toBe(legacy);
+    cleanup(home);
+  });
+
+  test('migrate --apply unsets legacy global hooksPath and migrates opt-out', () => {
+    repo = newBareRepo();
+    const home = mkdtempSync(join(tmpdir(), 'guardrails-home-'));
+    const legacy = join(home, '.git-hooks-personal');
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(join(legacy, '.opt-out'), `${repo}\n`);
+    run('git', ['config', '--global', 'core.hooksPath', legacy], { env: { ...envForRepo(repo), HOME: home } });
+
+    const r = run(GUARDRAILS, ['migrate', '--apply'], { cwd: repo, env: { ...envForRepo(repo), HOME: home } });
+    expect(r.status).toBe(0);
+    expect(run('git', ['config', '--global', '--get', 'core.hooksPath'], { env: { ...envForRepo(repo), HOME: home } }).status).not.toBe(0);
+    expect(readFileSync(join(repo, 'xdg', 'guardrails', '.opt-out'), 'utf8')).toContain(repo);
+    cleanup(home);
+  });
+
+  test('doctor current repo renders structured detail', () => {
+    repo = newBareRepo();
+    expect(run(GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) }).status).toBe(0);
+
+    const r = run(GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('category');
+    expect(r.stdout).toContain('installed');
+    expect(r.stdout).toContain('pre-commit');
+    expect(r.stdout).toContain('installed (guardrails)');
+  });
+
+  test('doctor --all summary agrees with current repo classification', () => {
+    repo = newBareRepo();
+    expect(run(GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) }).status).toBe(0);
+
+    const current = run(GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) });
+    const all = run(GUARDRAILS, ['doctor', '--all', '--root', repo], { env: envForRepo(repo) });
+
+    expect(current.status).toBe(0);
+    expect(all.status).toBe(0);
+    expect(current.stdout).toContain('category');
+    expect(current.stdout).toContain('installed');
+    expect(all.stdout).toContain('1 installed');
+    expect(all.stdout).toContain(repo);
+  });
+
+  test('global-template generate writes init template and configures git', () => {
+    repo = newBareRepo();
+    const home = mkdtempSync(join(tmpdir(), 'guardrails-home-'));
+    const dataHome = join(repo, 'xdg-data');
+    const env = { ...envForRepo(repo), HOME: home, XDG_DATA_HOME: dataHome };
+
+    const r = run(GUARDRAILS, ['global-template', 'generate'], { cwd: repo, env });
+    expect(r.status).toBe(0);
+
+    const templateDir = join(dataHome, 'guardrails', 'git-template');
+    expect(run('git', ['config', '--global', '--get', 'init.templateDir'], { env }).stdout.trim()).toBe(templateDir);
+    for (const hook of ['pre-commit', 'pre-push', 'commit-msg']) {
+      expect(readFileSync(join(templateDir, 'hooks', hook), 'utf8')).toContain('# guardrails-managed: guardrails.v0');
+    }
+    cleanup(home);
   });
 });
 

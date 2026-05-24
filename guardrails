@@ -14,7 +14,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-GUARDRAILS_VERSION="0.4.0"
+GUARDRAILS_VERSION="0.5.0"
 GUARDRAILS_API_VERSION="guardrails.v0"
 
 # Resolve install dir. When run from brew, GUARDRAILS_HOME points at pkgshare.
@@ -144,18 +144,20 @@ _classify_hook() {
 
 # Classify all owned hooks for a repo. TSV: hook owner path hooksPath_local hooksPath_global opt_out
 _classify_repo_hooks() {
-  local repo="$1" hooks_dir local_hp global_hp opt_out hook owner path
+  local repo="$1" hooks_dir local_hp global_hp opt_out hook owner path local_hp_field global_hp_field
   hooks_dir=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
   hooks_dir="$hooks_dir/hooks"
   local_hp=$(git -C "$repo" config --local --get core.hooksPath 2>/dev/null || true)
   global_hp=$(git -C "$repo" config --global --get core.hooksPath 2>/dev/null || true)
   opt_out=0
   _repo_is_opted_out "$repo" && opt_out=1
+  local_hp_field="${local_hp:-.}"
+  global_hp_field="${global_hp:-.}"
 
   for hook in "${GUARDRAILS_HOOKS[@]}"; do
     path="$hooks_dir/$hook"
     owner=$(cd "$repo" && _classify_hook "$hooks_dir" "$hook")
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$hook" "$owner" "$path" "$local_hp" "$global_hp" "$opt_out"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$hook" "$owner" "$path" "$local_hp_field" "$global_hp_field" "$opt_out"
   done
 }
 
@@ -199,13 +201,17 @@ cmd_install() {
   repo=$(_repo_toplevel) || die 10 "not a git repo (run from inside one)"
 
   # Conflict detection.
-  local local_hooks_path
+  local local_hooks_path hooks_dir
   local_hooks_path=$(_repo_local_hookspath)
+  hooks_dir=$(_repo_hooks_dir)
+  [[ -n "$hooks_dir" ]] || die 10 "could not resolve hooks dir for $repo"
   if [[ -n "$local_hooks_path" ]] && (( force == 0 )); then
-    # If the local hooksPath equals the global wt path, treat as harmless (wt-managed).
-    local global_hooks_path
+    # If the local hooksPath already points at this repo's .git/hooks or equals
+    # the global wt path, treat as harmless.
+    local global_hooks_path resolved_local_hooks_path
     global_hooks_path=$(_repo_global_hookspath)
-    if [[ "$local_hooks_path" != "$global_hooks_path" ]]; then
+    resolved_local_hooks_path=$(_resolve_hookspath "$repo" "$local_hooks_path")
+    if [[ "$resolved_local_hooks_path" != "$hooks_dir" && "$local_hooks_path" != "$global_hooks_path" ]]; then
       die 30 "this repo has a local core.hooksPath = $local_hooks_path
 
 guardrails cannot safely install into .git/hooks/ because that local
@@ -231,9 +237,6 @@ override redirects hooks elsewhere. Options:
     info "         [ -x \"\$(command -v guardrails)\" ] && guardrails run pre-commit"
   fi
 
-  local hooks_dir
-  hooks_dir=$(_repo_hooks_dir)
-  [[ -n "$hooks_dir" ]] || die 10 "could not resolve hooks dir for $repo"
   mkdir -p "$hooks_dir"
 
   local installed=0 skipped=0 conflicted=0
@@ -272,13 +275,12 @@ override redirects hooks elsewhere. Options:
     installed=$((installed + 1))
   done
 
-  # If a global core.hooksPath shadows our install, set a local override so
-  # git actually uses the hooks we just wrote. This is the "wt + guardrails
-  # can't both win in the same repo" tradeoff: when you `guardrails install`
-  # in a repo, that repo's hooks become guardrails-managed.
-  if [[ -n "$(_repo_global_hookspath)" ]] && [[ -z "$(_repo_local_hookspath)" ]] && (( installed > 0 )); then
+  # Set local core.hooksPath so git uses the per-repo hooks we just wrote,
+  # including when a global hooksPath (for example wt) would otherwise shadow
+  # .git/hooks.
+  if (( installed > 0 )); then
     git config --local core.hooksPath "$hooks_dir"
-    info "→ set local core.hooksPath = $hooks_dir (overrides global)"
+    info "→ set local core.hooksPath = $hooks_dir"
   fi
 
   green "installed "
@@ -426,57 +428,84 @@ cmd_doctor() {
   local repo
   repo=$(_repo_toplevel 2>/dev/null || true)
   if [[ -n "$repo" ]]; then
-    printf '\n%s\n' "$(dim "─── current repo: $repo ───")"
-    local hooks_dir; hooks_dir=$(_repo_hooks_dir)
-    for hook in "${GUARDRAILS_HOOKS[@]}"; do
-      printf '%-40s' "$hook"
-      local state
-      state=$(_classify_hook "$hooks_dir" "$hook")
-      case "$state" in
-        ours) green "installed (guardrails)\n" ;;
-        non-ours) yellow "present (not ours)\n" ;;
-        shadowed) yellow "shadowed by core.hooksPath\n" ;;
-        opt-out) dim "opt-out\n" ;;
-        *) dim "not installed\n" ;;
-      esac
-    done
-    local lh; lh=$(_repo_local_hookspath)
-    if [[ -n "$lh" ]]; then
-      printf '%-40s' "local core.hooksPath"; yellow "$lh\n"
-    fi
+    local record
+    record=$(_audit_repo "$repo")
+    _render_repo_audit_detail "$record"
   fi
 
   return $fail
+}
+
+_render_repo_audit_detail() {
+  local record="$1"
+  local repo opt_out hooks_dir_kind pre_commit pre_push commit_msg category
+  IFS=$'\t' read -r repo opt_out hooks_dir_kind pre_commit pre_push commit_msg category <<< "$record"
+
+  printf '\n%s\n' "$(dim "─── current repo: $repo ───")"
+  printf '%-40s' "category"; _render_category "$category"
+  printf '%-40s' "hooks dir kind"; dim "$hooks_dir_kind\n"
+  printf '%-40s' "opt-out"; dim "$opt_out\n"
+
+  _render_hook_detail "pre-commit" "$pre_commit"
+  _render_hook_detail "pre-push" "$pre_push"
+  _render_hook_detail "commit-msg" "$commit_msg"
+
+  local lh; lh=$(git -C "$repo" config --local --get core.hooksPath 2>/dev/null || true)
+  if [[ -n "$lh" ]]; then
+    printf '%-40s' "local core.hooksPath"; yellow "$lh\n"
+  fi
+}
+
+_render_hook_detail() {
+  local hook="$1" owner="$2"
+  printf '%-40s' "$hook"
+  case "$owner" in
+    ours) green "installed (guardrails)\n" ;;
+    non-ours) yellow "present (not ours)\n" ;;
+    shadowed) yellow "shadowed by core.hooksPath\n" ;;
+    opt-out) dim "opt-out\n" ;;
+    *) dim "not installed\n" ;;
+  esac
+}
+
+_render_category() {
+  case "$1" in
+    installed) green "installed\n" ;;
+    bypass-other) yellow "bypass-other\n" ;;
+    opt-out) dim "opt-out\n" ;;
+    *) dim "not-installed\n" ;;
+  esac
 }
 
 cmd_doctor_all() {
   local root="$1"
   [[ -d "$root" ]] || die 10 "scan root does not exist: $root"
 
-  local installed=0 not_installed=0 bypass=0 opt_out=0 total=0
-  local repos_installed=() repos_not_installed=() repos_bypass=() repos_optout=()
+  local installed=0 not_installed=0 bypass_other=0 opt_out=0 total=0
+  local repos_installed=() repos_not_installed=() repos_bypass_other=() repos_optout=()
 
   # Walk the root looking for .git/ (or .git file for worktrees).
   while IFS= read -r repo; do
     [[ -z "$repo" ]] && continue
     total=$((total + 1))
-    local cat
-    cat=$(_audit_repo "$repo")
-    case "$cat" in
+    local record audit_repo opt_out_flag hooks_dir_kind pre_commit pre_push commit_msg category
+    record=$(_audit_repo "$repo")
+    IFS=$'\t' read -r audit_repo opt_out_flag hooks_dir_kind pre_commit pre_push commit_msg category <<< "$record"
+    case "$category" in
       installed)
-        repos_installed+=("$repo")
+        repos_installed+=("$audit_repo")
         installed=$((installed + 1))
         ;;
       not-installed)
-        repos_not_installed+=("$repo")
+        repos_not_installed+=("$audit_repo")
         not_installed=$((not_installed + 1))
         ;;
-      bypass)
-        repos_bypass+=("$repo")
-        bypass=$((bypass + 1))
+      bypass-other)
+        repos_bypass_other+=("$audit_repo")
+        bypass_other=$((bypass_other + 1))
         ;;
       opt-out)
-        repos_optout+=("$repo")
+        repos_optout+=("$audit_repo")
         opt_out=$((opt_out + 1))
         ;;
     esac
@@ -486,7 +515,7 @@ cmd_doctor_all() {
   printf '  %d repos | ' "$total"
   green "$installed installed"; printf ' | '
   dim "$not_installed not-installed"; printf ' | '
-  yellow "$bypass bypass"; printf ' | '
+  yellow "$bypass_other bypass-other"; printf ' | '
   dim "$opt_out opt-out"; printf '\n\n'
 
   if (( installed > 0 )); then
@@ -505,10 +534,10 @@ cmd_doctor_all() {
     printf '\n'
   fi
 
-  if (( bypass > 0 )); then
-    yellow "bypass — local core.hooksPath set to a non-guardrails path:\n"
-    for r in "${repos_bypass[@]}"; do
-      local hp; hp=$(git -C "$r" config --local --get core.hooksPath 2>/dev/null)
+  if (( bypass_other > 0 )); then
+    yellow "bypass-other — core.hooksPath resolves to a non-guardrails path:\n"
+    for r in "${repos_bypass_other[@]}"; do
+      local hp; hp=$(git -C "$r" config --local --get core.hooksPath 2>/dev/null || git -C "$r" config --global --get core.hooksPath 2>/dev/null || true)
       printf '  ✗ %s   (hooksPath: %s)\n' "${r#$root/}" "$hp"
     done
     printf '  fix: in each, add this near the top of the existing hook script:\n'
@@ -534,10 +563,24 @@ _find_git_repos() {
 }
 
 _audit_repo() {
-  local repo="$1" row owner any_ours=0 any_shadowed=0 any_optout=0
-  _classify_repo_hooks "$repo" >/dev/null 2>&1 || { echo "not-installed"; return; }
+  local repo="$1"
+  local hook owner path local_hp global_hp opt_out hooks_dir_kind category
+  local any_ours=0 any_shadowed=0 any_optout=0
+  local pre_commit="absent" pre_push="absent" commit_msg="absent"
+  opt_out=0
+  _repo_is_opted_out "$repo" && opt_out=1
 
-  while IFS=$'\t' read -r _hook owner _path _local_hp _global_hp _opt_out; do
+  if ! _classify_repo_hooks "$repo" >/dev/null 2>&1; then
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$repo" "0" "unknown" "absent" "absent" "absent" "not-installed"
+    return 0
+  fi
+
+  while IFS=$'\t' read -r hook owner path local_hp global_hp _row_opt_out; do
+    case "$hook" in
+      pre-commit) pre_commit="$owner" ;;
+      pre-push) pre_push="$owner" ;;
+      commit-msg) commit_msg="$owner" ;;
+    esac
     case "$owner" in
       ours) any_ours=1 ;;
       shadowed) any_shadowed=1 ;;
@@ -545,13 +588,34 @@ _audit_repo() {
     esac
   done < <(_classify_repo_hooks "$repo")
 
-  if (( any_optout == 1 )); then echo "opt-out"; return; fi
-  if (( any_ours == 1 )); then echo "installed"; return; fi
-  if (( any_shadowed == 1 )); then echo "bypass"; return; fi
-  echo "not-installed"
+  hooks_dir_kind="default"
+  if (( any_shadowed == 1 )); then
+    if [[ "$local_hp" != "." ]]; then
+      hooks_dir_kind="local-core.hooksPath"
+    elif [[ "$global_hp" != "." ]]; then
+      hooks_dir_kind="global-core.hooksPath"
+    else
+      hooks_dir_kind="shadowed"
+    fi
+  fi
+
+  if (( any_optout == 1 )); then category="opt-out"
+  elif (( any_ours == 1 )); then category="installed"
+  elif (( any_shadowed == 1 )); then category="bypass-other"
+  else category="not-installed"; fi
+
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$repo" "$opt_out" "$hooks_dir_kind" "$pre_commit" "$pre_push" "$commit_msg" "$category"
 }
 
 cmd_global_template() {
+  if (($#)); then
+    case "$1" in
+      generate) shift ;;
+      *) die 10 "unknown global-template command: $1" ;;
+    esac
+  fi
+  (($# == 0)) || die 10 "unexpected positional: $1"
+
   local template_dir="${XDG_DATA_HOME:-$HOME/.local/share}/guardrails/git-template"
   local hooks_dir="$template_dir/hooks"
   mkdir -p "$hooks_dir"
@@ -641,7 +705,7 @@ main() {
     run)            cmd_run "$@" ;;
     doctor)         cmd_doctor "$@" ;;
     migrate)        cmd_migrate "$@" ;;
-    --global-template) cmd_global_template "$@" ;;
+    --global-template|global-template) cmd_global_template "$@" ;;
     --version|-V)   cmd_version ;;
     -h|--help|help|"") cmd_help ;;
     *)              die 10 "unknown subcommand: $sub (try 'guardrails --help')" ;;
