@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.1] — doctor path + opt-out hotfix + architecture docs
+
+### Added
+- `CONTEXT.md` with load-bearing invariants, module map, real vs hypothetical seams, public CLI stability, and ADRs.
+- `AGENTS.md` orienting agents working on this repo itself.
+- `docs/COMPARISON.md` with full narrative competitor analysis (pre-commit, lefthook, Husky, Githooks, Overcommit, Gitleaks, TruffleHog).
+
+### Changed
+- `README.md` competitor section reformatted to the agents-toc-style table (`Tool | Verb | What it writes | When it runs`) and links to the new comparison doc.
+- Added explicit `## What it doesn’t do` section.
+
+### Fixed
+- `_find_git_repos` now uses null-delimited `find` output so `doctor --all` preserves repo paths containing spaces instead of splitting them around line 645.
+- `cmd_run` now calls `_repo_is_opted_out` around line 420, preserving canonical-path opt-out behavior for symlinked or otherwise non-canonical repo paths.
+
 ## [0.8.0] — ai-git-guardrails rename
 
 ### Breaking

@@ -23,7 +23,13 @@ Universal checks only — the kind every repo benefits from, none of which dupli
 | `commit-msg` | `commitlint` | `SKIP_COMMITLINT` | Enforce Conventional Commits format |
 | `pre-push` | `fallow` | `SKIP_FALLOW` | Run universal code-health gate for JS/TS |
 
-Deliberately NOT in scope: `eslint`, `prettier`, `ruff`, `biome`, `tsc`, `mypy`, project tests. Those belong to each repo's own CI.
+## What it doesn't do
+
+- It does not replace repo-owned lint, format, typecheck, or test commands; `eslint`, `prettier`, `ruff`, `biome`, `tsc`, `mypy`, and project tests stay in each repo's own hooks or CI.
+- It does not offer a plugin framework. The curated universal registry is the product boundary.
+- It does not trust repo-local config to weaken user-owned safety checks; opt-out lives under `~/.config/ai-git-guardrails/`, not in the repo.
+- It does not hide or replace existing hook managers. It installs safely beside them or prints compose snippets for explicit chaining.
+- It does not provide server-side enforcement. Client hooks remain bypassable with `--no-verify`; mirror critical policies in CI or protected-branch rules when needed.
 
 ## Install
 
@@ -110,15 +116,19 @@ fi
 
 There is deliberately no in-repo opt-out marker. A repository must not be able to disable user-level security checks by committing a file.
 
-## Competitor comparison
+## Comparison
 
-| Tool | What they do | What we do that they don't |
-|---|---|---|
-| pre-commit | Multi-language hook framework with version-pinned hook repos and reusable hooks, including large-file and branch checks. | Ship one brew-installed, user-owned universal safety layer that hostile repos cannot weaken by editing repo config. |
-| lefthook | Fast hook orchestrator with concurrent YAML-defined commands. | Use lefthook as execution substrate while adding conflict-aware install, ownership markers, migration, and curated universal policy. |
-| Husky | Popular JS/package.json-centered hook helper using `core.hooksPath`. | Work across non-JS repos and provide secrets, branch, large-file, actionlint, commitlint, and fallow checks as user-owned baseline. |
-| Gitleaks | Secret scanner for repos/files/stdin. | Wrap Gitleaks with a hostile-repo-resistant baseline config and combine it with non-secret universal Git checks. |
-| TruffleHog | Broad secret scanner with live credential verification and many data-source backends. | Stay lightweight for client-side Git hooks and provide hook enrollment, composition, branch guard, large-file, actionlint, commitlint, and fallow checks. |
+| Tool | Verb | What it writes | When it runs |
+|---|---|---|---|
+| **ai-git-guardrails** | guard | user-owned hook shims in `.git/hooks` or pasteable compose snippets; uses shipped universal checks | commit-time + push-time + on-demand doctor/run |
+| `pre-commit` | orchestrate | repo-owned `.pre-commit-config.yaml` plus installed hook entrypoints | commit-time; configured per repo |
+| `lefthook` | orchestrate | repo-owned `lefthook.yml` commands and Git hook wiring | commit-time + push-time; configured per repo |
+| `Husky` | wire | repo-owned `.husky/*` scripts, mostly for JS/package.json projects | commit-time + push-time; configured per repo |
+| `Githooks` / `Overcommit` | manage | shared/repo hook runner config and hook entrypoints | Git hook time across configured hooks |
+| `Gitleaks` | scan | findings only; optional config/rules | on-demand, CI, or when another hook runner invokes it |
+| `TruffleHog` | verify secrets | findings only; broad source scanning, optional verification output | on-demand, CI, or when another hook runner invokes it |
+
+More detail in [`docs/COMPARISON.md`](docs/COMPARISON.md).
 
 ## Security properties
 

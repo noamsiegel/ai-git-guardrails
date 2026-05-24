@@ -10,7 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { spawnSync, type SpawnSyncOptions } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -221,6 +221,37 @@ describe('Bypass envvar surface', () => {
     expect(r.status).toBe(0);
   });
 
+  test('user-owned .opt-out canonicalization is respected from symlinked repo path', () => {
+    const scanRoot = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-symlink-'));
+    try {
+      const realRepo = join(scanRoot, 'real', 'foo');
+      const symParent = join(scanRoot, 'sym');
+      const symRepo = join(symParent, 'foo');
+      mkdirSync(realRepo, { recursive: true });
+      mkdirSync(symParent, { recursive: true });
+      git(realRepo, 'init', '-q', '-b', 'main');
+      git(realRepo, 'config', 'user.email', 'test@example.com');
+      git(realRepo, 'config', 'user.name', 'ai-git-guardrails-test');
+      symlinkSync(realRepo, symRepo, 'dir');
+
+      const configHome = join(scanRoot, 'xdg');
+      const optOutDir = join(configHome, 'ai-git-guardrails');
+      mkdirSync(optOutDir, { recursive: true });
+      const canonical = git(realRepo, 'rev-parse', '--show-toplevel').stdout.trim();
+      writeFileSync(join(optOutDir, '.opt-out'), `${canonical}\n`);
+
+      writeFileSync(join(realRepo, 'leak.ts'), STRIPE_KEY_LIKE);
+      git(realRepo, 'add', 'leak.ts');
+      const r = run(AI_GIT_GUARDRAILS, ['run', 'pre-commit'], {
+        cwd: symRepo,
+        env: testEnv(configHome),
+      });
+      expect(r.status).toBe(0);
+    } finally {
+      cleanup(scanRoot);
+    }
+  });
+
   test('in-repo .no-personal-hooks marker does NOT opt out (R1)', () => {
     writeFileSync(join(repo, '.no-personal-hooks'), '');
     writeFileSync(join(repo, 'leak.ts'), STRIPE_KEY_LIKE);
@@ -422,6 +453,29 @@ describe('Lifecycle commands', () => {
     expect(current.stdout).toContain('installed');
     expect(all.stdout).toContain('1 installed');
     expect(all.stdout).toContain(repo);
+  });
+
+  test('doctor --all preserves repo paths containing spaces', () => {
+    const scanRoot = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-spaces-'));
+    try {
+      const spaceParent = join(scanRoot, 'My Projects');
+      const spaceRepo = join(spaceParent, 'foo');
+      const configHome = join(scanRoot, 'xdg');
+      mkdirSync(spaceRepo, { recursive: true });
+      mkdirSync(configHome, { recursive: true });
+      git(spaceRepo, 'init', '-q', '-b', 'main');
+      git(spaceRepo, 'config', 'user.email', 'test@example.com');
+      git(spaceRepo, 'config', 'user.name', 'ai-git-guardrails-test');
+      expect(run(AI_GIT_GUARDRAILS, ['install', '--force'], { cwd: spaceRepo, env: testEnv(configHome) }).status).toBe(0);
+
+      const r = run(AI_GIT_GUARDRAILS, ['doctor', '--all', '--root', scanRoot], { env: testEnv(configHome) });
+      const expected = 'My Projects/foo';
+      expect(r.status).toBe(0);
+      expect((r.stdout.match(new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) ?? []).length).toBe(1);
+      expect(r.stdout).toContain('1 installed');
+    } finally {
+      cleanup(scanRoot);
+    }
   });
 
   test('global-template generate writes init template and configures git', () => {

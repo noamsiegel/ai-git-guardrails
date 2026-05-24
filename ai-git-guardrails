@@ -14,7 +14,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-AI_GIT_GUARDRAILS_VERSION="0.8.0"
+AI_GIT_GUARDRAILS_VERSION="0.8.1"
 AI_GIT_GUARDRAILS_API_VERSION="ai-git-guardrails.v0"
 LEGACY_GUARDRAILS_API_VERSION="guardrails.v0"
 
@@ -420,10 +420,8 @@ cmd_run() {
   # User-owned per-repo opt-out.
   local repo
   repo=$(_repo_toplevel || true)
-  if [[ -n "$repo" ]] && [[ -f "$AI_GIT_GUARDRAILS_OPT_OUT" ]]; then
-    if grep -Fxq "$repo" "$AI_GIT_GUARDRAILS_OPT_OUT"; then
-      exit 0
-    fi
+  if [[ -n "$repo" ]] && _repo_is_opted_out "$repo"; then
+    exit 0
   fi
 
   # Defer to lefthook with our shipped config.
@@ -647,8 +645,8 @@ _find_git_repos() {
   # Find dirs that contain .git (either as dir or file for worktrees).
   # Stop descending into a repo once found.
   find "$root" -type d -maxdepth 5 \( -name node_modules -o -name .venv -o -name venv -o -name .worktrees \) -prune -o \
-    \( -name .git -o -type f -name .git \) -print 2>/dev/null \
-    | xargs -I {} dirname {} | sort -u
+    \( -name .git -o -type f -name .git \) -print0 2>/dev/null \
+    | while IFS= read -r -d '' git_dir; do dirname "$git_dir"; done | sort -u
 }
 
 _audit_repo() {
