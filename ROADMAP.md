@@ -98,7 +98,7 @@ Part B (foundation):
 
 ## Non-goals
 
-- **No project-specific test suites or plugin-defined checks.** The curated baseline remains the product.
+- **No project-specific lint, format, typecheck, test suites, or plugin-defined checks.** The curated user-owned safety baseline remains the product; Python and TS/JS quality hooks belong in repo-owned hook config or CI.
 - **No plugin system inside guardrails.** git-guardrails IS a plugin into other hook orchestrators (the compose-shim).
 
 ## Open questions

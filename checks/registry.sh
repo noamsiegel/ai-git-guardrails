@@ -10,12 +10,7 @@ GIT_GUARDRAILS_CHECKS=(
   "pre-commit|large-files|SKIP_LARGE_FILES|git bash|Refuse staging blobs over MAX_BLOB_SIZE"
   "pre-commit|gitleaks|SKIP_GITLEAKS|gitleaks|Detect secrets in staged changes"
   "pre-commit|actionlint|SKIP_ACTIONLINT|actionlint|Validate .github/workflows YAML"
-  "pre-commit|ruff|SKIP_RUFF|ruff|Lint staged Python files when Ruff is available"
-  "pre-commit|biome|SKIP_BIOME|biome|Check staged JS/TS files in Biome-configured repos"
   "commit-msg|commitlint|SKIP_COMMITLINT|commitlint|Conventional Commits format"
-  "pre-push|ruff|SKIP_RUFF|ruff|Lint tracked Python files before push"
-  "pre-push|ty|SKIP_TY|ty|Type-check Python repos before push"
-  "pre-push|biome|SKIP_BIOME|biome|Check Biome-configured repos before push"
   "pre-push|fallow|SKIP_FALLOW|fallow bun|Universal code-health gate for JS/TS"
 )
 
@@ -23,4 +18,4 @@ GIT_GUARDRAILS_CHECKS=(
 GIT_GUARDRAILS_REQUIRED_TOOLS=(git bash)
 
 # Tools that are OPTIONAL (skip the corresponding check if missing).
-GIT_GUARDRAILS_OPTIONAL_TOOLS=(lefthook gitleaks actionlint ruff biome commitlint ty fallow bun)
+GIT_GUARDRAILS_OPTIONAL_TOOLS=(lefthook gitleaks actionlint commitlint fallow bun)

@@ -12,7 +12,7 @@ These do not change without a major version bump.
 3. **Conflict-aware install**: `cmd_install` refuses unsafe local `core.hooksPath` overrides and non-owned hook files unless `--force` is explicit. Existing Husky, lefthook, pre-commit framework, and custom `.githooks/` surfaces are detected by `_detect_hook_systems` and receive compose guidance instead of silent clobbering.
 4. **Classifier is the source of hook state truth**: `_classify_hook`, `_classify_repo_hooks`, and `_audit_repo` define absent / ours / non-ours / shadowed / opt-out. Install, uninstall, current-repo doctor, and `doctor --all` must route through those records instead of re-inferring hook state ad hoc.
 5. **Compose snippets preserve Git hook semantics**: `_compose_snippet` owns embedded, standalone, and bypass-help hook text. Embedded snippets preserve `"$@"`, do not consume stdin, and exit non-zero when git-guardrails blocks. This is required for `commit-msg` file paths and `pre-push` ref streams.
-6. **Curated checks registry**: `checks/registry.sh` is the shell-readable source of truth for shipped checks, skip env vars, required tools, optional tools, and rationale. README, `lefthook.yml`, doctor output, and tests should stay in parity with it. Repo-aware lint/type gates must skip cleanly when matching files, config, or tools are absent.
+6. **Curated checks registry**: `checks/registry.sh` is the shell-readable source of truth for shipped safety checks, skip env vars, required tools, optional tools, and rationale. README, `lefthook.yml`, doctor output, and tests should stay in parity with it. Repo-specific language/toolchain lint, format, typecheck, and test policy belongs in repo-owned hook config or CI, not the git-guardrails default baseline.
 7. **Shipped security baselines beat repo-local weakening**: `cmd_run` invokes lefthook with the shipped `lefthook.yml`; the gitleaks check uses the shipped `gitleaks.toml`. A repo-local `.gitleaks.toml` must not weaken the baseline.
 8. **Staged data, not mutable worktree data**: large-file checks inspect staged blobs, not later worktree bytes. Keep this invariant in `checks/large-files.sh` behavior and tests.
 
@@ -51,7 +51,7 @@ The intended dependency shape is: commands render and mutate; classifier owns ho
 ## Hypothetical seams (do not introduce yet)
 
 - **Shared bash helper library across repos**: git-guardrails and git-wt both use TSV record streams, but no second concrete consumer needs the exact same helper API. Extracting a shared library would add release coupling before the interface is proven.
-- **Plugin system for checks**: the curated baseline is the product. A plugin interface would move policy into repo/user extension points and weaken the clarity of the baseline.
+- **Plugin system or default language gates**: the curated safety baseline is the product. A plugin interface or built-in `ruff`/`biome`/`ty` defaults would move repo quality policy into git-guardrails and weaken the clarity of the baseline.
 - **Hook-manager writers by default**: default install should remain user-owned `.git/hooks` plus conflict-aware refusal. Manager-specific mutation can exist only as an explicit feature with tests for Husky/lefthook/pre-commit surfaces.
 - **Full Go rewrite**: Bash is still adequate for the current macOS/Homebrew personal CLI. Revisit only when shell quoting/TSV invariants or cross-platform distribution cost starts dominating feature work.
 
@@ -92,3 +92,5 @@ ADR-005 — compose-snippet contract: v0.6.0 centralized embedded, standalone, a
 ADR-006 — universals registry: v0.7.0 added `checks/registry.sh` as the source of truth for universal checks and tool reachability. Decision: adding/removing a check should be one registry edit plus parity updates, not scattered prose/code changes.
 
 ADR-007 — product rename to git-guardrails: current rename changes the primary binary, marker, env vars, config dir, docs, tests, workflows, and formula references to `git-guardrails`. Decision: fresh installs use only `git-guardrails`.
+
+ADR-008 — repo-owned language hooks: unreleased correction moved `ruff`, `ty`, and `biome` out of the default baseline. Decision: Python and TS/JS lint/type/format commands require repo-specific working directories, dependency managers, config roots, generated-file exclusions, and monorepo path scopes, so git-guardrails documents composition examples but does not ship or install those hooks by default.

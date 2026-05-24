@@ -4,8 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- Moved Python and TS/JS language gates out of the default git-guardrails baseline. `ruff`, `ty`, and `biome` are now documented as repo-owned hook/CI policy instead of user-owned safety checks.
+
 ### Removed
 - Clean cutover to `git-guardrails` only: removed the `ai-git-guardrails` wrapper, old-name marker/env/config/template compatibility, stale legacy shim migration, and active migration docs/tests.
+- Removed shipped `checks/ruff.sh`, `checks/ty.sh`, and `checks/biome.sh` wrappers so repositories invoke their own language commands directly.
 
 ## [0.9.0] — git-guardrails rename
 

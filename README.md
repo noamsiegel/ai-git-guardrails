@@ -1,12 +1,12 @@
 # git-guardrails
 
-> Personal git-hook quality layer. Installs per-repo with safe ownership marker.
+> Personal Git safety layer. Installs per-repo with safe ownership marker.
 
-`git-guardrails` installs a curated set of user-owned Git safety checks into each repo you opt in, plus optional repo-aware quality gates for common tools. It composes cleanly with Husky, lefthook, the pre-commit framework, or no other hook system.
+`git-guardrails` installs a curated set of user-owned Git safety checks into each repo you opt in. It composes cleanly with Husky, lefthook, the pre-commit framework, or no other hook system.
 
 ## What it runs
 
-User-owned checks, plus repo-aware lint/type gates that skip when matching files, config, or tools are absent:
+User-owned safety checks:
 
 | Hook | Command | Skip env | Rationale |
 |---|---|---|---|
@@ -14,17 +14,12 @@ User-owned checks, plus repo-aware lint/type gates that skip when matching files
 | `pre-commit` | `large-files` | `SKIP_LARGE_FILES` | Refuse staged blobs over `MAX_BLOB_SIZE` |
 | `pre-commit` | `gitleaks` | `SKIP_GITLEAKS` | Detect secrets in staged changes |
 | `pre-commit` | `actionlint` | `SKIP_ACTIONLINT` | Validate `.github/workflows` YAML |
-| `pre-commit` | `ruff` | `SKIP_RUFF` | Lint staged Python files when Ruff is available |
-| `pre-commit` | `biome` | `SKIP_BIOME` | Check staged JS/TS/JSON files in Biome-configured repos |
 | `commit-msg` | `commitlint` | `SKIP_COMMITLINT` | Enforce Conventional Commits format |
-| `pre-push` | `ruff` | `SKIP_RUFF` | Lint tracked Python files before push |
-| `pre-push` | `ty` | `SKIP_TY` | Type-check Python repos before push |
-| `pre-push` | `biome` | `SKIP_BIOME` | Check Biome-configured repos before push |
 | `pre-push` | `fallow` | `SKIP_FALLOW` | Run universal code-health gate for JS/TS |
 
 ## What it doesn't do
 
-- It does not replace repo-owned full test suites or project-specific CI; project tests, `eslint`, `prettier`, `tsc`, `mypy`, and custom commands stay in each repo's own hooks or CI.
+- It does not replace repo-owned lint, format, typecheck, test suites, or project-specific CI; `ruff`, `biome`, `ty`, `eslint`, `prettier`, `tsc`, `mypy`, `vitest`, and custom commands stay in each repo's own hooks or CI.
 - It does not offer a plugin framework. The curated universal registry is the product boundary.
 - It does not trust repo-local config to weaken user-owned safety checks; opt-out lives under `~/.config/git-guardrails/`, not in the repo.
 - It does not hide or replace existing hook managers. It installs safely beside them or prints compose snippets for explicit chaining.
@@ -103,7 +98,7 @@ fi
 
 | Goal | How |
 |---|---|
-| Skip one check, once | `SKIP_GITLEAKS=1 git commit ...` (also `SKIP_ACTIONLINT`, `SKIP_LARGE_FILES`, `SKIP_RUFF`, `SKIP_BIOME`, `SKIP_COMMITLINT`, `SKIP_TY`, `SKIP_BRANCH_GUARD`, `SKIP_FALLOW`) |
+| Skip one check, once | `SKIP_GITLEAKS=1 git commit ...` (also `SKIP_ACTIONLINT`, `SKIP_LARGE_FILES`, `SKIP_COMMITLINT`, `SKIP_BRANCH_GUARD`, `SKIP_FALLOW`) |
 | Allow push to protected branch once | `ALLOW_PROTECTED_PUSH=1 git push ...` |
 | Raise large-file threshold | `LARGE_FILE_LIMIT_MB=20 git commit ...` |
 | Pin fallow to a different version | `FALLOW_VERSION=2.45.0 git push ...` |
@@ -113,6 +108,10 @@ fi
 | Skip everything (git-guardrails AND repo hooks) | `git commit --no-verify` / `git push --no-verify` |
 
 There is deliberately no in-repo opt-out marker. A repository must not be able to disable user-level security checks by committing a file.
+
+## Per-repo language hooks
+
+Keep language/toolchain quality policy in repo-owned hook config or CI. Use [`docs/PER_REPO_HOOKS.md`](docs/PER_REPO_HOOKS.md) for copy-paste examples that compose git-guardrails first, then run Python and TS/JS commands from the correct workspace root.
 
 ## Comparison
 

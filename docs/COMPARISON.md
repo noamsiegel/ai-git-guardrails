@@ -25,7 +25,7 @@ Short version: git-guardrails is not a general hook framework and not a scanner.
 
 `pre-commit` is the dominant multi-language hook framework. It manages language environments, pins hook repos, and has a large hook ecosystem. `pre-commit-hooks` overlaps with large-file checks and branch protection.
 
-**Difference**: pre-commit is normally repo-owned through `.pre-commit-config.yaml`. git-guardrails is user-owned: the repo cannot remove gitleaks, branch guard, large-file checks, actionlint, commitlint, or fallow by editing committed config.
+**Difference**: pre-commit is normally repo-owned through `.pre-commit-config.yaml`. git-guardrails is user-owned: the repo cannot remove gitleaks, branch guard, large-file checks, actionlint, commitlint, or fallow by editing committed config. Project `ruff`, `biome`, `ty`, `eslint`, `tsc`, and test commands stay in pre-commit or another repo-owned surface.
 
 **Compose**: keep pre-commit for project-specific checks. Put git-guardrails in a hook entrypoint when you want explicit chaining, or let git-guardrails own `.git/hooks` for the personal baseline.
 
@@ -35,7 +35,7 @@ Short version: git-guardrails is not a general hook framework and not a scanner.
 
 **Difference**: lefthook executes configured commands. git-guardrails adds policy: conflict-aware install, ownership markers, marker-only uninstall, user-owned opt-out, hostile-repo-resistant shipped config, and a curated universal registry.
 
-**Compose**: existing lefthook repos can call `git-guardrails run pre-commit`, `run pre-push`, or `run commit-msg` from their repo-owned config. git-guardrails should not silently mutate that config by default.
+**Compose**: existing lefthook repos can call `git-guardrails run pre-commit`, `run pre-push`, or `run commit-msg` from their repo-owned config, then run workspace-scoped language/toolchain commands from that same config. git-guardrails should not silently mutate that config by default.
 
 ### Husky
 

@@ -573,100 +573,15 @@ describe('universal checks registry', () => {
       cleanup(repo);
     }
   });
-});
 
-describe('repo-aware quality check wrappers', () => {
-  let repo: string;
-  let bin: string;
+  test('registry does not ship repo-owned language tools by default', () => {
+    const commands = new Set(registryEntries().map((entry) => entry.command));
+    const optionalTools = new Set(registryTools('GIT_GUARDRAILS_OPTIONAL_TOOLS'));
 
-  beforeEach(() => {
-    repo = newBareRepo();
-    bin = join(repo, 'bin');
-    mkdirSync(bin, { recursive: true });
-  });
-
-  afterEach(() => cleanup(repo));
-
-  function wrapperEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
-    return { ...envForRepo(repo), PATH: `${bin}:${process.env.PATH ?? ''}`, ...extra };
-  }
-
-  function writeStub(name: string, body: string) {
-    const path = join(bin, name);
-    writeFileSync(path, `#!/usr/bin/env bash\n${body}`);
-    chmodSync(path, 0o755);
-  }
-
-  test('ruff staged check passes only Python files', () => {
-    const argsFile = join(repo, 'ruff-args.txt');
-    writeStub('ruff', `printf '%s\\n' "$@" > "${argsFile}"\n`);
-
-    const r = run(join(REPO_ROOT, 'checks/ruff.sh'), ['staged', '--', 'app.py', 'README.md', 'types.pyi'], {
-      cwd: repo,
-      env: wrapperEnv(),
-    });
-
-    expect(r.status).toBe(0);
-    expect(readFileSync(argsFile, 'utf8').trim().split('\n')).toEqual([
-      'check',
-      '--force-exclude',
-      '--',
-      'app.py',
-      'types.pyi',
-    ]);
-  });
-
-  test('ty full check skips repos without Python files', () => {
-    writeStub('ty', 'exit 99\n');
-    writeFileSync(join(repo, 'README.md'), 'docs\n');
-    git(repo, 'add', 'README.md');
-
-    const r = run(join(REPO_ROOT, 'checks/ty.sh'), [], { cwd: repo, env: wrapperEnv() });
-
-    expect(r.status).toBe(0);
-  });
-
-  test('ty full check runs in Python repos', () => {
-    const argsFile = join(repo, 'ty-args.txt');
-    writeStub('ty', `printf '%s\\n' "$@" > "${argsFile}"\n`);
-    writeFileSync(join(repo, 'app.py'), 'print("hello")\n');
-    git(repo, 'add', 'app.py');
-
-    const r = run(join(REPO_ROOT, 'checks/ty.sh'), [], { cwd: repo, env: wrapperEnv() });
-
-    expect(r.status).toBe(0);
-    expect(readFileSync(argsFile, 'utf8').trim()).toBe('check');
-  });
-
-  test('biome skips repos without Biome config', () => {
-    writeStub('biome', 'exit 99\n');
-
-    const r = run(join(REPO_ROOT, 'checks/biome.sh'), ['staged', '--', 'app.ts'], {
-      cwd: repo,
-      env: wrapperEnv(),
-    });
-
-    expect(r.status).toBe(0);
-  });
-
-  test('biome staged check runs when config exists', () => {
-    const argsFile = join(repo, 'biome-args.txt');
-    writeStub('biome', `printf '%s\\n' "$@" > "${argsFile}"\n`);
-    writeFileSync(join(repo, 'biome.json'), '{}\n');
-
-    const r = run(join(REPO_ROOT, 'checks/biome.sh'), ['staged', '--', 'app.ts'], {
-      cwd: repo,
-      env: wrapperEnv(),
-    });
-
-    expect(r.status).toBe(0);
-    expect(readFileSync(argsFile, 'utf8').trim().split('\n')).toEqual([
-      'check',
-      '--no-errors-on-unmatched',
-      '--files-ignore-unknown=true',
-      '--',
-      'app.ts',
-    ]);
+    for (const repoOwnedTool of ['ruff', 'ty', 'biome']) {
+      expect(commands.has(repoOwnedTool), repoOwnedTool).toBe(false);
+      expect(optionalTools.has(repoOwnedTool), repoOwnedTool).toBe(false);
+    }
   });
 });
 
@@ -793,7 +708,7 @@ echo unreachable`], {
   test('bypass-help emits a single pastable shell line', () => {
     const r = compose('pre-commit', 'bypass-help');
     expect(r.status).toBe(0);
-    expect(r.stdout.trim()).toBe('SKIP_LARGE_FILES=1 SKIP_GITLEAKS=1 SKIP_ACTIONLINT=1 SKIP_RUFF=1 SKIP_BIOME=1 git-guardrails run pre-commit "$@" || true');
+    expect(r.stdout.trim()).toBe('SKIP_LARGE_FILES=1 SKIP_GITLEAKS=1 SKIP_ACTIONLINT=1 git-guardrails run pre-commit "$@" || true');
     expect(r.stdout.trim()).not.toContain('\n');
     expect(run('bash', ['-n'], { input: r.stdout }).status).toBe(0);
   });

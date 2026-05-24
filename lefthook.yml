@@ -1,10 +1,10 @@
 ---
 # git-guardrails: portable git-hook quality harness
 #
-# Policy: universal safety checks plus optional repo-aware quality gates.
-# Python/Biome gates run only when matching files/config/tools exist.
+# Policy: user-owned safety baseline. Project language lint/type/test hooks
+# belong in repo-owned hook config or CI.
 # This file is portable: consumed locally from the git-guardrails template directory
-# and intended to be `extends:`-ed from other repos (monorepo, OSS, etc.).
+# and can be composed from other hook managers.
 #
 # Paths in `run:` commands use ${GIT_GUARDRAILS_TEMPLATES:-$HOME/.config/git-guardrails/templates}
 # so consumers can vendor this file into any directory by setting GIT_GUARDRAILS_TEMPLATES
@@ -16,10 +16,7 @@
 #   - large-files -> SKIP_LARGE_FILES
 #   - gitleaks -> SKIP_GITLEAKS
 #   - actionlint -> SKIP_ACTIONLINT
-#   - ruff -> SKIP_RUFF
-#   - biome -> SKIP_BIOME
 #   - commitlint -> SKIP_COMMITLINT
-#   - ty -> SKIP_TY
 #   - fallow -> SKIP_FALLOW
 #
 # Bypass:
@@ -65,35 +62,6 @@ pre-commit:
         the size threshold (default 5MB).
         Override per-invocation: LARGE_FILE_LIMIT_MB=20 git commit ...
         Bypass: SKIP_LARGE_FILES=1.
-    ruff:
-      glob:
-        - "*.py"
-        - "*.pyi"
-      run: "${GIT_GUARDRAILS_TEMPLATES:-$HOME/.config/git-guardrails/templates}/checks/ruff.sh staged -- {staged_files}"
-      skip:
-        - run: test -n "${SKIP_RUFF:-}"
-      fail_text: |
-        Ruff flagged staged Python issues.
-        Fix the diagnostics above, then recommit.
-        Bypass: SKIP_RUFF=1.
-    biome:
-      glob:
-        - "*.js"
-        - "*.jsx"
-        - "*.ts"
-        - "*.tsx"
-        - "*.mjs"
-        - "*.cjs"
-        - "*.json"
-        - "*.jsonc"
-      run: "${GIT_GUARDRAILS_TEMPLATES:-$HOME/.config/git-guardrails/templates}/checks/biome.sh staged -- {staged_files}"
-      skip:
-        - run: test -n "${SKIP_BIOME:-}"
-      fail_text: |
-        Biome flagged staged JS/TS or JSON issues.
-        Fix the diagnostics above, then recommit.
-        Bypass: SKIP_BIOME=1.
-
 commit-msg:
   commands:
     commitlint:
@@ -114,45 +82,6 @@ pre-push:
     # branch-guard runs outside lefthook (in the pre-push entry shim) so it
     # can see the raw refs stdin; lefthook consumes that stdin for its own
     # template variables before commands see it.
-    ruff:
-      glob:
-        - "*.py"
-        - "*.pyi"
-      run: "${GIT_GUARDRAILS_TEMPLATES:-$HOME/.config/git-guardrails/templates}/checks/ruff.sh full"
-      skip:
-        - run: test -n "${SKIP_RUFF:-}"
-      fail_text: |
-        Ruff flagged Python issues before push.
-        Fix the diagnostics above, then re-push.
-        Bypass: SKIP_RUFF=1.
-    ty:
-      glob:
-        - "*.py"
-        - "*.pyi"
-      run: "${GIT_GUARDRAILS_TEMPLATES:-$HOME/.config/git-guardrails/templates}/checks/ty.sh"
-      skip:
-        - run: test -n "${SKIP_TY:-}"
-      fail_text: |
-        ty flagged Python type issues before push.
-        Fix the diagnostics above, then re-push.
-        Bypass: SKIP_TY=1.
-    biome:
-      glob:
-        - "*.js"
-        - "*.jsx"
-        - "*.ts"
-        - "*.tsx"
-        - "*.mjs"
-        - "*.cjs"
-        - "*.json"
-        - "*.jsonc"
-      run: "${GIT_GUARDRAILS_TEMPLATES:-$HOME/.config/git-guardrails/templates}/checks/biome.sh full"
-      skip:
-        - run: test -n "${SKIP_BIOME:-}"
-      fail_text: |
-        Biome flagged JS/TS or JSON issues before push.
-        Fix the diagnostics above, then re-push.
-        Bypass: SKIP_BIOME=1.
     fallow:
       glob:
         - "*.ts"
