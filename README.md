@@ -1,14 +1,14 @@
-# ai-git-guardrails
+# git-guardrails
 
 > Personal git-hook quality layer. Installs per-repo with safe ownership marker.
 
-`ai-git-guardrails` installs a curated set of universal quality checks into each repo you opt in, without conflicting with that repo's own lint/format/typecheck setup. It composes cleanly with Husky, lefthook, the pre-commit framework, or no other hook system.
+`git-guardrails` installs a curated set of universal quality checks into each repo you opt in, without conflicting with that repo's own lint/format/typecheck setup. It composes cleanly with Husky, lefthook, the pre-commit framework, or no other hook system.
 
 ## Why the rename
 
-This project was previously named `guardrails`. That name now collides with Guardrails AI and several unrelated package-registry projects that expose or imply a `guardrails` CLI. `ai-git-guardrails` makes scope explicit: AI-assisted, user-owned Git safety checks.
+This project was previously named `ai-git-guardrails`, and before that `guardrails`. `git-guardrails` keeps the scope explicit without implying an AI-specific product: user-owned Git safety checks.
 
-Fresh installs use binary `ai-git-guardrails`, marker `# ai-git-guardrails-managed: ai-git-guardrails.v0`, env vars like `AI_GIT_GUARDRAILS_TEMPLATES`, and config dir `~/.config/ai-git-guardrails/`. Existing repos with old `# guardrails-managed: guardrails.v0` hooks are still recognized as ours so `ai-git-guardrails uninstall` can remove them safely. Legacy `GUARDRAILS_TEMPLATES` and `~/.config/guardrails/` are read as fallback during migration.
+Fresh installs use binary `git-guardrails`, marker `# git-guardrails-managed: git-guardrails.v0`, env vars like `GIT_GUARDRAILS_TEMPLATES`, and config dir `~/.config/git-guardrails/`. Existing repos with old `# ai-git-guardrails-managed: ai-git-guardrails.v0` or `# guardrails-managed: guardrails.v0` hooks are still recognized as ours so `git-guardrails uninstall` can remove them safely. The legacy `ai-git-guardrails` entrypoint forwards to `git-guardrails`; `AI_GIT_GUARDRAILS_*`, `GUARDRAILS_*`, `~/.config/ai-git-guardrails/`, and `~/.config/guardrails/` remain fallbacks during migration.
 
 ## What it runs
 
@@ -27,7 +27,7 @@ Universal checks only — the kind every repo benefits from, none of which dupli
 
 - It does not replace repo-owned lint, format, typecheck, or test commands; `eslint`, `prettier`, `ruff`, `biome`, `tsc`, `mypy`, and project tests stay in each repo's own hooks or CI.
 - It does not offer a plugin framework. The curated universal registry is the product boundary.
-- It does not trust repo-local config to weaken user-owned safety checks; opt-out lives under `~/.config/ai-git-guardrails/`, not in the repo.
+- It does not trust repo-local config to weaken user-owned safety checks; opt-out lives under `~/.config/git-guardrails/`, not in the repo.
 - It does not hide or replace existing hook managers. It installs safely beside them or prints compose snippets for explicit chaining.
 - It does not provide server-side enforcement. Client hooks remain bypassable with `--no-verify`; mirror critical policies in CI or protected-branch rules when needed.
 
@@ -35,69 +35,69 @@ Universal checks only — the kind every repo benefits from, none of which dupli
 
 ```bash
 brew tap noamsiegel/tap
-brew install noamsiegel/tap/ai-git-guardrails
+brew install noamsiegel/tap/git-guardrails
 ```
 
-That puts `ai-git-guardrails` on `PATH` at `/opt/homebrew/bin/ai-git-guardrails`. Then in each repo you want enrolled:
+That puts `git-guardrails` on `PATH` at `/opt/homebrew/bin/git-guardrails`. Then in each repo you want enrolled:
 
 ```bash
 cd <some-repo>
-ai-git-guardrails install
+git-guardrails install
 ```
 
-That writes hook shims into `.git/hooks/{pre-commit,pre-push,commit-msg}` with ownership marker (`# ai-git-guardrails-managed: ai-git-guardrails.v0`) and sets local `core.hooksPath` to point at them. The shims invoke `ai-git-guardrails run <hook>` which delegates to `lefthook` with the shipped config.
+That writes hook shims into `.git/hooks/{pre-commit,pre-push,commit-msg}` with ownership marker (`# git-guardrails-managed: git-guardrails.v0`) and sets local `core.hooksPath` to point at them. The shims invoke `git-guardrails run <hook>` which delegates to `lefthook` with the shipped config.
 
 To enroll new clones automatically:
 
 ```bash
-ai-git-guardrails --global-template
+git-guardrails --global-template
 ```
 
-That wires `git config --global init.templateDir` so every subsequent `git init` / `git clone` installs ai-git-guardrails hooks.
+That wires `git config --global init.templateDir` so every subsequent `git init` / `git clone` installs git-guardrails hooks.
 
 ## Commands
 
 ```bash
-ai-git-guardrails install [--force] [--skip <hook>]   # install hooks in current repo
-ai-git-guardrails uninstall                            # remove only ours-marked hooks
-ai-git-guardrails doctor                               # audit current repo + tool reachability
-ai-git-guardrails run <hook>                           # invoked by installed shims
-ai-git-guardrails migrate [--apply]                    # migrate from legacy global-hooksPath install
-ai-git-guardrails --global-template                    # auto-install on new clones
-ai-git-guardrails --version
+git-guardrails install [--force] [--skip <hook>]   # install hooks in current repo
+git-guardrails uninstall                            # remove only ours-marked hooks
+git-guardrails doctor                               # audit current repo + tool reachability
+git-guardrails run <hook>                           # invoked by installed shims
+git-guardrails migrate [--apply]                    # migrate from legacy global-hooksPath install
+git-guardrails --global-template                    # auto-install on new clones
+git-guardrails --version
 ```
 
-`ai-git-guardrails install` is conflict-aware: it refuses to clobber non-ai-git-guardrails hooks unless you pass `--force`, and it detects Husky/lefthook/pre-commit configs in the repo and prints a canonical compose snippet if you'd rather chain than override. Embedded shims preserve `"$@"`, propagate failures, and leave stdin untouched (required for `pre-push` ref lines).
+`git-guardrails install` is conflict-aware: it refuses to clobber non-git-guardrails hooks unless you pass `--force`, and it detects Husky/lefthook/pre-commit configs in the repo and prints a canonical compose snippet if you'd rather chain than override. Embedded shims preserve `"$@"`, propagate failures, and leave stdin untouched (required for `pre-push` ref lines).
 
 ## Compose snippets
 
 `pre-commit`:
 
 ```bash
-# ai-git-guardrails compose: pre-commit
-# Preserves "$@" and stdin; exits non-zero if ai-git-guardrails blocks.
-if command -v ai-git-guardrails >/dev/null 2>&1; then
-  ai-git-guardrails run pre-commit "$@" || exit $?
+# git-guardrails compose: pre-commit
+# Preserves "$@" and stdin; exits non-zero if git-guardrails blocks.
+if command -v git-guardrails >/dev/null 2>&1; then
+  git-guardrails run pre-commit "$@" || exit $?
 fi
 ```
 
 `pre-push`:
 
 ```bash
-# ai-git-guardrails compose: pre-push
-# Preserves "$@" and stdin; exits non-zero if ai-git-guardrails blocks.
-if command -v ai-git-guardrails >/dev/null 2>&1; then
-  ai-git-guardrails run pre-push "$@" || exit $?
+# git-guardrails compose: pre-push
+# Preserves "$@" and stdin; exits non-zero if git-guardrails blocks.
+if command -v git-guardrails >/dev/null 2>&1; then
+  git-guardrails run pre-push "$@" || exit $?
 fi
 ```
 
 `commit-msg`:
 
 ```bash
-# ai-git-guardrails compose: commit-msg
-# Preserves "$@" and stdin; exits non-zero if ai-git-guardrails blocks.
-if command -v ai-git-guardrails >/dev/null 2>&1; then
-  ai-git-guardrails run commit-msg "$@" || exit $?
+# git-guardrails compose: commit-msg
+# Preserves "$@" and stdin; exits non-zero if git-guardrails blocks.
+if command -v git-guardrails >/dev/null 2>&1; then
+  git-guardrails run commit-msg "$@" || exit $?
 fi
 ```
 
@@ -109,10 +109,10 @@ fi
 | Allow push to protected branch once | `ALLOW_PROTECTED_PUSH=1 git push ...` |
 | Raise large-file threshold | `LARGE_FILE_LIMIT_MB=20 git commit ...` |
 | Pin fallow to a different version | `FALLOW_VERSION=2.45.0 git push ...` |
-| Skip all ai-git-guardrails checks for one invocation | `SKIP_PERSONAL_HOOKS=1 git commit ...` |
-| Opt out a repo permanently | Add canonical path to `~/.config/ai-git-guardrails/.opt-out`, one per line |
-| Override PATH for non-standard tool locations | Drop `~/.config/ai-git-guardrails/init.sh` to extend `PATH` (asdf/mise/nvm) |
-| Skip everything (ai-git-guardrails AND repo hooks) | `git commit --no-verify` / `git push --no-verify` |
+| Skip all git-guardrails checks for one invocation | `SKIP_PERSONAL_HOOKS=1 git commit ...` |
+| Opt out a repo permanently | Add canonical path to `~/.config/git-guardrails/.opt-out`, one per line |
+| Override PATH for non-standard tool locations | Drop `~/.config/git-guardrails/init.sh` to extend `PATH` (asdf/mise/nvm) |
+| Skip everything (git-guardrails AND repo hooks) | `git commit --no-verify` / `git push --no-verify` |
 
 There is deliberately no in-repo opt-out marker. A repository must not be able to disable user-level security checks by committing a file.
 
@@ -120,7 +120,7 @@ There is deliberately no in-repo opt-out marker. A repository must not be able t
 
 | Tool | Verb | What it writes | When it runs |
 |---|---|---|---|
-| **ai-git-guardrails** | guard | user-owned hook shims in `.git/hooks` or pasteable compose snippets; uses shipped universal checks | commit-time + push-time + on-demand doctor/run |
+| **git-guardrails** | guard | user-owned hook shims in `.git/hooks` or pasteable compose snippets; uses shipped universal checks | commit-time + push-time + on-demand doctor/run |
 | `pre-commit` | orchestrate | repo-owned `.pre-commit-config.yaml` plus installed hook entrypoints | commit-time; configured per repo |
 | `lefthook` | orchestrate | repo-owned `lefthook.yml` commands and Git hook wiring | commit-time + push-time; configured per repo |
 | `Husky` | wire | repo-owned `.husky/*` scripts, mostly for JS/package.json projects | commit-time + push-time; configured per repo |
@@ -134,13 +134,13 @@ More detail in [`docs/COMPARISON.md`](docs/COMPARISON.md).
 
 - User-owned config lives outside repos.
 - Uninstall removes only hooks with recognized ownership markers.
-- Existing old-marker installs classify as ours for safe migration.
+- Existing `ai-git-guardrails` and older `guardrails` marker installs classify as ours for safe migration.
 - Staged large-file checks inspect staged blobs, not mutable worktree bytes.
 - Gitleaks uses the shipped baseline config explicitly, so repo-local `.gitleaks.toml` cannot weaken the scan.
 
 ## Development
 
 ```bash
-bun test tests/ai-git-guardrails.test.ts
-bash -n ai-git-guardrails checks/registry.sh
+bun test tests/git-guardrails.test.ts
+bash -n git-guardrails checks/registry.sh
 ```

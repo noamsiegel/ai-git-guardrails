@@ -63,10 +63,10 @@ jobs:
     steps:
       - uses: mislav/bump-homebrew-formula-action@v3
         with:
-          formula-name: ai-git-guardrails
-          formula-path: Formula/ai-git-guardrails.rb
+          formula-name: git-guardrails
+          formula-path: Formula/git-guardrails.rb
           homebrew-tap: noamsiegel/homebrew-tap
           tag-name: ${{ needs.release.outputs.tag_name }}
-          download-url: https://github.com/noamsiegel/ai-git-guardrails/archive/refs/tags/${{ needs.release.outputs.tag_name }}.tar.gz
+          download-url: https://github.com/noamsiegel/git-guardrails/archive/refs/tags/${{ needs.release.outputs.tag_name }}.tar.gz
         env:
           COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

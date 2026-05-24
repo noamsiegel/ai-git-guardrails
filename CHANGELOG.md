@@ -2,16 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0] — git-guardrails rename
+
+### Changed
+- Primary product name, binary, generated hook marker, env vars, config dir, docs, tests, workflow smoke checks, and Homebrew formula references now use `git-guardrails`.
+- Product scope remains universal-only: per-repo install is primary, global template is optional, and GitHub Actions feature work remains out of scope.
+
+### Migration
+- Legacy `ai-git-guardrails` entrypoint remains as a forwarding wrapper to `git-guardrails` for old hooks/installations where both files ship together.
+- Existing `# ai-git-guardrails-managed: ai-git-guardrails.v0` hooks, older `# guardrails-managed: guardrails.v0` hooks, `AI_GIT_GUARDRAILS_*` / `GUARDRAILS_*` env vars, and `~/.config/ai-git-guardrails/` / `~/.config/guardrails/` dirs remain recognized during migration.
+
 ## [0.8.3] — legacy shim auto-migration
 
 ### Fixed
-- `install` now detects stale v0.7-era hook shims with `# guardrails-managed:` markers that still invoke the old `guardrails` binary, rewrites them to canonical `ai-git-guardrails` standalone shims, and reports migrated hook count in the install summary.
-- `run` and `doctor` now warn once per invocation when a repo still has a stale legacy shim, pointing users to `ai-git-guardrails install --force` for migration.
+- `install` now detects stale v0.7-era hook shims with `# guardrails-managed:` markers that still invoke the old `guardrails` binary, rewrites them to canonical `git-guardrails` standalone shims, and reports migrated hook count in the install summary.
+- `run` and `doctor` now warn once per invocation when a repo still has a stale legacy shim, pointing users to `git-guardrails install --force` for migration.
 
 ## [0.8.2] — TSV separator hotfix + RELEASING.md
 
 ### Fixed
-- Classifier record stream (`_classify_repo_hooks`, `_audit_repo`, `doctor`, `doctor --all`) was emitting plain-tab-separated records despite docs documenting `\x1f` (unit separator). Empty fields would silently shift columns under `IFS=$'\t'`. Migrated producer and all consumers to `AI_GIT_GUARDRAILS_RECORD_SEP=$'\x1f'` so empty fields are preserved.
+- Classifier record stream (`_classify_repo_hooks`, `_audit_repo`, `doctor`, `doctor --all`) was emitting plain-tab-separated records despite docs documenting `\x1f` (unit separator). Empty fields would silently shift columns under `IFS=$'\t'`. Migrated producer and all consumers to `GIT_GUARDRAILS_RECORD_SEP=$'\x1f'` so empty fields are preserved.
 
 ### Added
 - `RELEASING.md`: copy-pasteable release checklist + recovery notes (stale shim, tag misalignment).
@@ -32,20 +42,20 @@ All notable changes to this project will be documented in this file.
 - `_find_git_repos` now uses null-delimited `find` output so `doctor --all` preserves repo paths containing spaces instead of splitting them around line 645.
 - `cmd_run` now calls `_repo_is_opted_out` around line 420, preserving canonical-path opt-out behavior for symlinked or otherwise non-canonical repo paths.
 
-## [0.8.0] — ai-git-guardrails rename
+## [0.8.0] — git-guardrails rename
 
 ### Breaking
-- CLI binary is now `ai-git-guardrails`; generated hooks now call `ai-git-guardrails run <hook>`.
-- Fresh installs use marker `# ai-git-guardrails-managed: ai-git-guardrails.v0`, config dir `~/.config/ai-git-guardrails/`, and `AI_GIT_GUARDRAILS_*` env vars.
+- CLI binary is now `git-guardrails`; generated hooks now call `git-guardrails run <hook>`.
+- Fresh installs use marker `# git-guardrails-managed: git-guardrails.v0`, config dir `~/.config/git-guardrails/`, and `GIT_GUARDRAILS_*` env vars.
 
 ### Changed
-- Renamed in-repo source, tests, docs, workflow references, lefthook defaults, and registry variables from the old name to `ai-git-guardrails`.
-- `checks/registry.sh` now exports `AI_GIT_GUARDRAILS_CHECKS`, `AI_GIT_GUARDRAILS_REQUIRED_TOOLS`, and `AI_GIT_GUARDRAILS_OPTIONAL_TOOLS`.
+- Renamed in-repo source, tests, docs, workflow references, lefthook defaults, and registry variables from the old name to `git-guardrails`.
+- `checks/registry.sh` now exports `GIT_GUARDRAILS_CHECKS`, `GIT_GUARDRAILS_REQUIRED_TOOLS`, and `GIT_GUARDRAILS_OPTIONAL_TOOLS`.
 
 ### Migration
-- Existing hooks with legacy marker `# guardrails-managed: guardrails.v0` are still classified as ours, so `ai-git-guardrails uninstall` can remove old installs safely instead of reporting non-ours conflicts.
-- `GUARDRAILS_TEMPLATES` and `GUARDRAILS_PATH` remain backward-compatible fallbacks when the new `AI_GIT_GUARDRAILS_*` env vars are absent.
-- If `~/.config/guardrails/` exists and `~/.config/ai-git-guardrails/` does not, the CLI reads the old config dir and warns to move it.
+- Existing hooks with legacy marker `# guardrails-managed: guardrails.v0` are still classified as ours, so `git-guardrails uninstall` can remove old installs safely instead of reporting non-ours conflicts.
+- `GUARDRAILS_TEMPLATES` and `GUARDRAILS_PATH` remain backward-compatible fallbacks when the new `GIT_GUARDRAILS_*` env vars are absent.
+- If `~/.config/guardrails/` exists and `~/.config/git-guardrails/` does not, the CLI reads the old config dir and warns to move it.
 
 ## [0.7.0] — universals registry
 

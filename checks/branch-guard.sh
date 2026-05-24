@@ -30,7 +30,7 @@ set -euo pipefail
 
 # Honor legacy PROTECTED_BRANCHES env var for backwards compat (deprecated).
 if [[ -n "${PROTECTED_BRANCHES:-}" ]] && [[ -z "${PROTECTED_BRANCH_REGEX:-}" ]]; then
-  echo "ai-git-guardrails branch-guard: PROTECTED_BRANCHES is deprecated. Use PROTECTED_BRANCH_REGEX (regex) or PROTECTED_BRANCHES_LIST (literal list)." >&2
+  echo "git-guardrails branch-guard: PROTECTED_BRANCHES is deprecated. Use PROTECTED_BRANCH_REGEX (regex) or PROTECTED_BRANCHES_LIST (literal list)." >&2
   PROTECTED_BRANCH_REGEX="$PROTECTED_BRANCHES"
 fi
 

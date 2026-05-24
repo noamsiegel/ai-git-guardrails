@@ -1,6 +1,6 @@
-# ai-git-guardrails personal gitleaks baseline.
+# git-guardrails personal gitleaks baseline.
 #
-# THIS FILE OVERRIDES REPO-LOCAL .gitleaks.toml when ai-git-guardrails runs gitleaks,
+# THIS FILE OVERRIDES REPO-LOCAL .gitleaks.toml when git-guardrails runs gitleaks,
 # because lefthook invokes gitleaks with `--config <this file>` explicitly.
 #
 # Why: a hostile or careless repo cannot use its own .gitleaks.toml to add
@@ -12,7 +12,7 @@
 # extend this file. Do NOT add repo-specific patterns here — those belong in
 # `.gitleaksignore` inside the repo.
 
-title = "ai-git-guardrails personal baseline"
+title = "git-guardrails personal baseline"
 
 [extend]
 # Use the default gitleaks ruleset (200+ rules for AWS, GCP, Stripe, JWT, …).

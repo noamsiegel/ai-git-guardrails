@@ -1,12 +1,12 @@
 ---
-# ai-git-guardrails: portable git-hook quality harness
+# git-guardrails: portable git-hook quality harness
 #
 # Policy: universals only. Lint/format/typecheck stay 100% repo-owned.
-# This file is portable: consumed locally from the ai-git-guardrails template directory
+# This file is portable: consumed locally from the git-guardrails template directory
 # and intended to be `extends:`-ed from other repos (monorepo, OSS, etc.).
 #
-# Paths in `run:` commands use ${AI_GIT_GUARDRAILS_TEMPLATES:-${GUARDRAILS_TEMPLATES:-$HOME/.config/ai-git-guardrails/templates}}
-# so consumers can vendor this file into any directory by setting AI_GIT_GUARDRAILS_TEMPLATES
+# Paths in `run:` commands use ${GIT_GUARDRAILS_TEMPLATES:-${AI_GIT_GUARDRAILS_TEMPLATES:-${GUARDRAILS_TEMPLATES:-$HOME/.config/git-guardrails/templates}}}
+# so consumers can vendor this file into any directory by setting GIT_GUARDRAILS_TEMPLATES
 # to that location.
 #
 # Universal checks registry: checks/registry.sh is canonical.
@@ -21,7 +21,7 @@
 # Bypass:
 #   - SKIP_PERSONAL_HOOKS=1 git commit          (skip everything)
 #   - SKIP_<CHECK>=1 git commit                  (per-check skip)
-#   - Repo path in $AI_GIT_GUARDRAILS_TEMPLATES/.opt-out    (user-owned per-repo opt-out)
+#   - Repo path in $GIT_GUARDRAILS_TEMPLATES/.opt-out    (user-owned per-repo opt-out)
 #   - git commit --no-verify                     (nuclear; skips repo hooks too)
 
 assert_lefthook_installed: false  # invoked manually by entry shims, not git-installed
@@ -32,7 +32,7 @@ pre-commit:
   follow: true
   commands:
     gitleaks:
-      run: gitleaks protect --staged --no-banner --redact --verbose --config "${AI_GIT_GUARDRAILS_TEMPLATES:-${GUARDRAILS_TEMPLATES:-$HOME/.config/ai-git-guardrails/templates}}/gitleaks.toml"
+      run: gitleaks protect --staged --no-banner --redact --verbose --config "${GIT_GUARDRAILS_TEMPLATES:-${AI_GIT_GUARDRAILS_TEMPLATES:-${GUARDRAILS_TEMPLATES:-$HOME/.config/git-guardrails/templates}}}/gitleaks.toml"
       skip:
         - run: test -n "${SKIP_GITLEAKS:-}"
       stage_fixed: false
@@ -40,7 +40,7 @@ pre-commit:
         gitleaks found potential secrets in staged changes.
         Review the report above. For per-commit exceptions, use
         `.gitleaksignore` in the repo root (fingerprint-based, safe).
-        For cross-repo allowlists, edit $AI_GIT_GUARDRAILS_TEMPLATES/gitleaks.toml.
+        For cross-repo allowlists, edit $GIT_GUARDRAILS_TEMPLATES/gitleaks.toml.
         Bypass: SKIP_GITLEAKS=1.
     actionlint:
       glob:
@@ -53,7 +53,7 @@ pre-commit:
         actionlint flagged issues in your GitHub Actions workflow YAML.
         Fix the diagnostics above, or bypass with SKIP_ACTIONLINT=1.
     large-files:
-      run: "${AI_GIT_GUARDRAILS_TEMPLATES:-${GUARDRAILS_TEMPLATES:-$HOME/.config/ai-git-guardrails/templates}}/checks/large-files.sh -- {staged_files}"
+      run: "${GIT_GUARDRAILS_TEMPLATES:-${AI_GIT_GUARDRAILS_TEMPLATES:-${GUARDRAILS_TEMPLATES:-$HOME/.config/git-guardrails/templates}}}/checks/large-files.sh -- {staged_files}"
       skip:
         - run: test -n "${SKIP_LARGE_FILES:-}"
       fail_text: |
@@ -65,7 +65,7 @@ pre-commit:
 commit-msg:
   commands:
     commitlint:
-      run: commitlint --edit {1} --config "${AI_GIT_GUARDRAILS_TEMPLATES:-${GUARDRAILS_TEMPLATES:-$HOME/.config/ai-git-guardrails/templates}}/commitlint.config.cjs"
+      run: commitlint --edit {1} --config "${GIT_GUARDRAILS_TEMPLATES:-${AI_GIT_GUARDRAILS_TEMPLATES:-${GUARDRAILS_TEMPLATES:-$HOME/.config/git-guardrails/templates}}}/commitlint.config.cjs"
       skip:
         - run: test -n "${SKIP_COMMITLINT:-}"
       fail_text: |
@@ -90,7 +90,7 @@ pre-push:
         - "*.jsx"
         - "*.mjs"
         - "*.cjs"
-      run: "${AI_GIT_GUARDRAILS_TEMPLATES:-${GUARDRAILS_TEMPLATES:-$HOME/.config/ai-git-guardrails/templates}}/checks/fallow.sh"
+      run: "${GIT_GUARDRAILS_TEMPLATES:-${AI_GIT_GUARDRAILS_TEMPLATES:-${GUARDRAILS_TEMPLATES:-$HOME/.config/git-guardrails/templates}}}/checks/fallow.sh"
       only:
         - run: test -f package.json
       skip:

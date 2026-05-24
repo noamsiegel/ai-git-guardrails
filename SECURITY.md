@@ -14,6 +14,6 @@ Do not open public issues for security bugs. Include enough detail to reproduce 
 
 ## Security boundaries
 
-`ai-git-guardrails` is a user-owned hook layer. Hostile or careless repos must not be able to weaken the user's security checks through repo-local files or hook configuration.
+`git-guardrails` is a user-owned hook layer. Hostile or careless repos must not be able to weaken the user's security checks through repo-local files or hook configuration.
 
 Gitleaks baseline overrides are security-critical. Report any bypass that lets a repo-local `.gitleaks.toml`, environment poisoning, path manipulation, or committed opt-out marker disable or broaden secret-scanning allowlists without explicit user control.

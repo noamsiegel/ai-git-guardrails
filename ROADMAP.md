@@ -1,4 +1,4 @@
-# ai-git-guardrails Roadmap
+# git-guardrails Roadmap
 
 > Target architecture and quarterly milestones, derived from the
 > `improve-codebase-architecture` audit on 2026-05-23.
@@ -11,7 +11,7 @@ structural issues (ordered by leverage):
 
 1. **Hook state inferred 4 different ways** across `cmd_install` (lines 177–191), `cmd_uninstall` (lines 223–247), `_audit_repo` (lines 469–480), and `_is_ai_git_guardrails_hook`. Same domain concept (absent/ours/non-ours/shadowed/opt-out), four implementations.
 2. **`doctor --all` duplicates `doctor`** logic with a coarser classifier — invites drift where current-repo doctor says `present (not ours)` while `--all` buckets the same repo as `bypass`.
-3. **Stale legacy personal-hooks references** in `lefthook.yml`, `tests/ai-git-guardrails.test.ts`, and `tests/ai-git-guardrails.test.ts:303-310` (which shells out to the renamed PAI doctor path that no longer exists).
+3. **Stale legacy personal-hooks references** in `lefthook.yml`, `tests/git-guardrails.test.ts`, and `tests/git-guardrails.test.ts:303-310` (which shells out to the renamed PAI doctor path that no longer exists).
 4. **Compose-shim contract scattered** — `_generate_shim`, install help text, doctor `--all` bypass help, and the wt global hook bridge all emit slightly different paste-snippets with different `"$@"` / stdin / abort semantics.
 5. **Universals-only boundary is prose-only** — README + lefthook.yml + `cmd_doctor` tool list duplicate the same set of checks; no single registry.
 6. **Tests over-cover checks, under-cover lifecycle** — 8 branch-guard cases, near-zero coverage of install/uninstall/migrate/global-template.
@@ -48,7 +48,7 @@ with a summary renderer over the same data.
 
 Part A (mechanical):
 - Remove legacy personal-hooks defaults from `lefthook.yml` (legacy stays only in `cmd_migrate` README section).
-- Fix `tests/ai-git-guardrails.test.ts:303-310` to call `ai-git-guardrails doctor --all` instead of the renamed PAI path.
+- Fix `tests/git-guardrails.test.ts:303-310` to call `git-guardrails doctor --all` instead of the renamed PAI path.
 - Update legacy test fixtures to use `XDG_CONFIG_HOME` + temp dirs, not legacy personal-hooks state.
 
 Part B (foundation):
@@ -57,15 +57,15 @@ Part B (foundation):
 - Add table-style tests for each classifier state.
 
 **Files**
-- `ai-git-guardrails` (the binary)
+- `git-guardrails` (the binary)
 - `lefthook.yml`
-- `tests/ai-git-guardrails.test.ts`
+- `tests/git-guardrails.test.ts`
 
 **Acceptance**
 - All existing 22 tests still pass.
-- New classifier returns correct state for: absent / ai-git-guardrails-marked / non-ours / opt-out / local-hooksPath-bypass / global-hooksPath-bypass.
+- New classifier returns correct state for: absent / git-guardrails-marked / non-ours / opt-out / local-hooksPath-bypass / global-hooksPath-bypass.
 - The legacy personal-hooks path string appears only in migration help text.
-- `ai-git-guardrails --version` reports 0.4.0.
+- `git-guardrails --version` reports 0.4.0.
 
 ### v0.5.0 — Doctor unification + lifecycle tests (Q2)
 
@@ -86,7 +86,7 @@ Part B (foundation):
 
 **Acceptance**
 - All shim text in the repo (binary, README, generated globals) emits from `_compose_snippet`.
-- Adapter fixture proves a non-zero `ai-git-guardrails run` aborts by default and pre-push stdin reaches `branch-guard`.
+- Adapter fixture proves a non-zero `git-guardrails run` aborts by default and pre-push stdin reaches `branch-guard`.
 
 ### v0.7.0 — Universals registry (Q4)
 
@@ -101,7 +101,7 @@ Part B (foundation):
 ## Non-goals
 
 - **No per-repo lint/format/typecheck.** The universals-only boundary IS the product.
-- **No plugin system inside guardrails.** ai-git-guardrails IS a plugin into other hook orchestrators (the compose-shim).
+- **No plugin system inside guardrails.** git-guardrails IS a plugin into other hook orchestrators (the compose-shim).
 - **No migration of legacy hooks framework** beyond what `cmd_migrate` does today.
 
 ## Open questions

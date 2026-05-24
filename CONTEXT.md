@@ -1,26 +1,26 @@
-# ai-git-guardrails CONTEXT
+# git-guardrails CONTEXT
 
-Architecture context for agents (human and AI) working on ai-git-guardrails itself.
+Architecture context for agents (human and AI) working on git-guardrails itself.
 For user documentation see `README.md`, `docs/*`, and `ROADMAP.md`.
 
 ## Load-bearing invariants
 
 These do not change without a major version bump.
 
-1. **User-owned safety layer**: repo contents must not be able to disable ai-git-guardrails. Runtime opt-out is read from `~/.config/ai-git-guardrails/.opt-out` (`AI_GIT_GUARDRAILS_OPT_OUT`) in `_repo_is_opted_out` and `cmd_run`; there is deliberately no in-repo opt-out marker.
-2. **Ownership-marker uninstall**: uninstall removes only hooks classified as ours. `_classify_hook` recognizes the current marker `# ai-git-guardrails-managed: ai-git-guardrails.v0` and the legacy `# guardrails-managed: guardrails.v0`; `cmd_uninstall` deletes only the `ours` state.
+1. **User-owned safety layer**: repo contents must not be able to disable git-guardrails. Runtime opt-out is read from `~/.config/git-guardrails/.opt-out` (`GIT_GUARDRAILS_OPT_OUT`) in `_repo_is_opted_out` and `cmd_run`; legacy `~/.config/ai-git-guardrails/` and `~/.config/guardrails/` are read only when the new dir is absent. There is deliberately no in-repo opt-out marker.
+2. **Ownership-marker uninstall**: uninstall removes only hooks classified as ours. `_classify_hook` recognizes the current marker `# git-guardrails-managed: git-guardrails.v0`, the legacy `# ai-git-guardrails-managed: ai-git-guardrails.v0`, and the older `# guardrails-managed: guardrails.v0`; `cmd_uninstall` deletes only the `ours` state.
 3. **Conflict-aware install**: `cmd_install` refuses unsafe local `core.hooksPath` overrides and non-owned hook files unless `--force` is explicit. Existing Husky, lefthook, pre-commit framework, and custom `.githooks/` surfaces are detected by `_detect_hook_systems` and receive compose guidance instead of silent clobbering.
 4. **Classifier is the source of hook state truth**: `_classify_hook`, `_classify_repo_hooks`, and `_audit_repo` define absent / ours / non-ours / shadowed / opt-out. Install, uninstall, current-repo doctor, and `doctor --all` must route through those records instead of re-inferring hook state ad hoc.
-5. **Compose snippets preserve Git hook semantics**: `_compose_snippet` owns embedded, standalone, and bypass-help hook text. Embedded snippets preserve `"$@"`, do not consume stdin, and exit non-zero when ai-git-guardrails blocks. This is required for `commit-msg` file paths and `pre-push` ref streams.
+5. **Compose snippets preserve Git hook semantics**: `_compose_snippet` owns embedded, standalone, and bypass-help hook text. Embedded snippets preserve `"$@"`, do not consume stdin, and exit non-zero when git-guardrails blocks. This is required for `commit-msg` file paths and `pre-push` ref streams.
 6. **Universals-only registry**: `checks/registry.sh` is the shell-readable source of truth for shipped checks, skip env vars, required tools, optional tools, and rationale. README, `lefthook.yml`, doctor output, and tests should stay in parity with it.
 7. **Shipped security baselines beat repo-local weakening**: `cmd_run` invokes lefthook with the shipped `lefthook.yml`; the gitleaks check uses the shipped `gitleaks.toml`. A repo-local `.gitleaks.toml` must not weaken the baseline.
 8. **Staged data, not mutable worktree data**: large-file checks inspect staged blobs, not later worktree bytes. Keep this invariant in `checks/large-files.sh` behavior and tests.
-9. **Backward compatibility is explicit and temporary**: v0.8.0 compatibility for legacy markers, `GUARDRAILS_*` env vars, and `~/.config/guardrails/` lives in the binary so old installs can be uninstalled or migrated safely. Remove only through a documented deprecation cycle.
+9. **Backward compatibility is explicit and temporary**: rename compatibility for legacy markers, the `ai-git-guardrails` wrapper, `AI_GIT_GUARDRAILS_*` / `GUARDRAILS_*` env vars, and legacy config dirs lives in the binary so old installs can be uninstalled or migrated safely. Remove only through a documented deprecation cycle.
 
 ## Module map
 
 ```
-ai-git-guardrails          bash CLI binary and dispatch
+git-guardrails          bash CLI binary and dispatch
   constants/env            version, marker strings, template/config path resolution
   repo introspection       _repo_toplevel, _repo_hooks_dir, hooksPath helpers, opt-out
   classifier               _classify_hook, _classify_repo_hooks, _audit_repo
@@ -32,7 +32,7 @@ checks/*.sh                concrete check implementations used by lefthook.yml
 lefthook.yml               shipped hook orchestration config
 commitlint.config.cjs      shipped Conventional Commits config
 gitleaks.toml              shipped secret-scanning baseline
-tests/ai-git-guardrails.test.ts
+tests/git-guardrails.test.ts
                            Bun/TypeScript lifecycle + behavior tests over real temp repos
 README.md                  user-facing install, commands, scope, comparison
 ROADMAP.md                 architecture audit history and non-goals
@@ -51,7 +51,7 @@ The intended dependency shape is: commands render and mutate; classifier owns ho
 
 ## Hypothetical seams (do not introduce yet)
 
-- **Shared bash helper library across repos**: ai-git-guardrails and git-wt both use TSV record streams, but no second concrete consumer needs the exact same helper API. Extracting a shared library would add release coupling before the interface is proven.
+- **Shared bash helper library across repos**: git-guardrails and git-wt both use TSV record streams, but no second concrete consumer needs the exact same helper API. Extracting a shared library would add release coupling before the interface is proven.
 - **Plugin system for checks**: universals-only is the product. A plugin interface would move policy into repo/user extension points and weaken the clarity of the baseline.
 - **Hook-manager writers by default**: default install should remain user-owned `.git/hooks` plus conflict-aware refusal. Manager-specific mutation can exist only as an explicit feature with tests for Husky/lefthook/pre-commit surfaces.
 - **Full Go rewrite**: Bash is still adequate for the current macOS/Homebrew personal CLI. Revisit only when shell quoting/TSV invariants or cross-platform distribution cost starts dominating feature work.
@@ -74,13 +74,13 @@ This is a load-bearing invariant. Earlier sessions hit production bugs from
 
 ## Public API stability
 
-There is no library API. The contract is the `ai-git-guardrails` binary, generated hook marker/version, supported subcommands, skip/bypass environment variables, config locations, and shipped check behavior.
+There is no library API. The contract is the `git-guardrails` binary, generated hook marker/version, supported subcommands, skip/bypass environment variables, config locations, and shipped check behavior.
 
 Breaking changes include changing marker semantics, removing legacy marker recognition, changing config directory precedence, changing skip env names, changing hook names, or making previously accepted installs unsafe/refused without migration guidance.
 
 ## ADRs
 
-ADR-001 — per-repo binary install over legacy global `core.hooksPath`: v0.3.0 replaced the old global-hooksPath directory with a real CLI binary and per-repo `ai-git-guardrails install`. Decision: install ownership-marked hooks per repo and set local `core.hooksPath` so global hook setups such as wt do not shadow the baseline.
+ADR-001 — per-repo binary install over legacy global `core.hooksPath`: v0.3.0 replaced the old global-hooksPath directory with a real CLI binary and per-repo `git-guardrails install`. Decision: install ownership-marked hooks per repo and set local `core.hooksPath` so global hook setups such as wt do not shadow the baseline.
 
 ADR-002 — marker-only uninstall: v0.3.0 introduced stable ownership markers and uninstall that removes only marked hooks. Decision: preserving non-owned hooks beats aggressive cleanup.
 
@@ -92,4 +92,6 @@ ADR-005 — compose-snippet contract: v0.6.0 centralized embedded, standalone, a
 
 ADR-006 — universals registry: v0.7.0 added `checks/registry.sh` as the source of truth for universal checks and tool reachability. Decision: adding/removing a check should be one registry edit plus parity updates, not scattered prose/code changes.
 
-ADR-007 — rename with compatibility bridge: v0.8.0 renamed the project/binary to `ai-git-guardrails` while retaining legacy marker/env/config fallbacks. Decision: fresh installs use new names; old installs remain classifiable and removable during migration.
+ADR-007 — rename with compatibility bridge: v0.8.0 renamed the project/binary to `ai-git-guardrails` while retaining `guardrails` marker/env/config fallbacks.
+
+ADR-008 — product rename to git-guardrails: current rename changes the primary binary, marker, env vars, config dir, docs, tests, workflows, and formula references to `git-guardrails`. Decision: fresh installs use `git-guardrails`; legacy `ai-git-guardrails` and older `guardrails` installs remain classifiable/removable, and the legacy `ai-git-guardrails` entrypoint forwards to `git-guardrails` for old shims where both files ship together.

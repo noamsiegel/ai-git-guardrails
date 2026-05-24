@@ -1,7 +1,7 @@
 /**
- * ai-git-guardrails fixture-based test suite.
+ * git-guardrails fixture-based test suite.
  *
- * Run: bun test tests/ai-git-guardrails.test.ts
+ * Run: bun test tests/git-guardrails.test.ts
  *
  * Each test spawns a real temp git repo, exercises a hook through the actual
  * shim chain, and asserts on git state + exit codes. No mocks. The repos are
@@ -16,7 +16,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const AI_GIT_GUARDRAILS = join(REPO_ROOT, 'ai-git-guardrails');
+const GIT_GUARDRAILS = join(REPO_ROOT, 'git-guardrails');
 // Build the test key at runtime so GitHub's secret scanner doesn't flag this
 // source file. Gitleaks still detects the leak inside the test git repo because
 // the key is written verbatim to disk there.
@@ -59,8 +59,8 @@ function testEnv(configHome: string): NodeJS.ProcessEnv {
   ];
   return {
     ...process.env,
-    AI_GIT_GUARDRAILS_TEMPLATES: REPO_ROOT,
-    AI_GIT_GUARDRAILS_PATH: toolPath,
+    GIT_GUARDRAILS_TEMPLATES: REPO_ROOT,
+    GIT_GUARDRAILS_PATH: toolPath,
     XDG_CONFIG_HOME: configHome,
     PATH: `${REPO_ROOT}:${toolPath}`,
     NODE_PATH: `${globalNodePaths.join(':')}${process.env.NODE_PATH ? `:${process.env.NODE_PATH}` : ''}`,
@@ -68,26 +68,26 @@ function testEnv(configHome: string): NodeJS.ProcessEnv {
 }
 
 function newRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'git-guardrails-test-'));
   const configHome = join(dir, 'xdg');
   mkdirSync(configHome, { recursive: true });
   git(dir, 'init', '-q', '-b', 'main');
   git(dir, 'config', 'user.email', 'test@example.com');
-  git(dir, 'config', 'user.name', 'ai-git-guardrails-test');
-  const install = run(AI_GIT_GUARDRAILS, ['install', '--force'], { cwd: dir, env: testEnv(configHome) });
+  git(dir, 'config', 'user.name', 'git-guardrails-test');
+  const install = run(GIT_GUARDRAILS, ['install', '--force'], { cwd: dir, env: testEnv(configHome) });
   if (install.status !== 0) {
-    throw new Error(`ai-git-guardrails install failed: ${install.stderr || install.stdout}`);
+    throw new Error(`git-guardrails install failed: ${install.stderr || install.stdout}`);
   }
   return dir;
 }
 
 function newBareRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'git-guardrails-test-'));
   const configHome = join(dir, 'xdg');
   mkdirSync(configHome, { recursive: true });
   git(dir, 'init', '-q', '-b', 'main');
   git(dir, 'config', 'user.email', 'test@example.com');
-  git(dir, 'config', 'user.name', 'ai-git-guardrails-test');
+  git(dir, 'config', 'user.name', 'git-guardrails-test');
   return dir;
 }
 
@@ -148,7 +148,7 @@ describe('R6 — branch-guard list-vs-regex API', () => {
   function runGuard(stdin: string, env: Record<string, string> = {}): SpawnResult {
     return run(guard, [], {
       input: stdin,
-      env: { ...testEnv(mkdtempSync(join(tmpdir(), 'ai-git-guardrails-xdg-'))), ...env },
+      env: { ...testEnv(mkdtempSync(join(tmpdir(), 'git-guardrails-xdg-'))), ...env },
     });
   }
 
@@ -203,7 +203,7 @@ describe('Bypass envvar surface', () => {
   beforeEach(() => { repo = newRepo(); });
   afterEach(() => cleanup(repo));
 
-  test('SKIP_PERSONAL_HOOKS=1 skips ai-git-guardrails entirely', () => {
+  test('SKIP_PERSONAL_HOOKS=1 skips git-guardrails entirely', () => {
     writeFileSync(join(repo, 'leak.ts'), STRIPE_KEY_LIKE);
     git(repo, 'add', 'leak.ts');
     const r = git(repo, 'commit', '-m', 'bad msg', { env: envForRepo(repo, { SKIP_PERSONAL_HOOKS: '1' }) });
@@ -211,7 +211,7 @@ describe('Bypass envvar surface', () => {
     expect(r.status).toBe(0);
   });
 
-  test('--no-verify bypasses everything (wt and ai-git-guardrails)', () => {
+  test('--no-verify bypasses everything (wt and git-guardrails)', () => {
     writeFileSync(join(repo, 'leak.ts'), STRIPE_KEY_LIKE);
     git(repo, 'add', 'leak.ts');
     const r = git(repo, 'commit', '--no-verify', '-m', 'bad');
@@ -223,7 +223,7 @@ describe('Bypass envvar surface', () => {
     // canonicalizes /var/folders/... → /private/var/folders/... on macOS.
     // Use the same canonical form when writing the opt-out file.
     const canonical = git(repo, 'rev-parse', '--show-toplevel').stdout.trim();
-    const optOutDir = join(repo, 'xdg', 'ai-git-guardrails');
+    const optOutDir = join(repo, 'xdg', 'git-guardrails');
     mkdirSync(optOutDir, { recursive: true });
     writeFileSync(join(optOutDir, '.opt-out'), `${canonical}\n`);
     writeFileSync(join(repo, 'leak.ts'), STRIPE_KEY_LIKE);
@@ -233,7 +233,7 @@ describe('Bypass envvar surface', () => {
   });
 
   test('user-owned .opt-out canonicalization is respected from symlinked repo path', () => {
-    const scanRoot = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-symlink-'));
+    const scanRoot = mkdtempSync(join(tmpdir(), 'git-guardrails-symlink-'));
     try {
       const realRepo = join(scanRoot, 'real', 'foo');
       const symParent = join(scanRoot, 'sym');
@@ -242,18 +242,18 @@ describe('Bypass envvar surface', () => {
       mkdirSync(symParent, { recursive: true });
       git(realRepo, 'init', '-q', '-b', 'main');
       git(realRepo, 'config', 'user.email', 'test@example.com');
-      git(realRepo, 'config', 'user.name', 'ai-git-guardrails-test');
+      git(realRepo, 'config', 'user.name', 'git-guardrails-test');
       symlinkSync(realRepo, symRepo, 'dir');
 
       const configHome = join(scanRoot, 'xdg');
-      const optOutDir = join(configHome, 'ai-git-guardrails');
+      const optOutDir = join(configHome, 'git-guardrails');
       mkdirSync(optOutDir, { recursive: true });
       const canonical = git(realRepo, 'rev-parse', '--show-toplevel').stdout.trim();
       writeFileSync(join(optOutDir, '.opt-out'), `${canonical}\n`);
 
       writeFileSync(join(realRepo, 'leak.ts'), STRIPE_KEY_LIKE);
       git(realRepo, 'add', 'leak.ts');
-      const r = run(AI_GIT_GUARDRAILS, ['run', 'pre-commit'], {
+      const r = run(GIT_GUARDRAILS, ['run', 'pre-commit'], {
         cwd: symRepo,
         env: testEnv(configHome),
       });
@@ -321,23 +321,33 @@ describe('Lifecycle commands', () => {
 
   test('install writes owned hooks and sets local core.hooksPath', () => {
     repo = newBareRepo();
-    const r = run(AI_GIT_GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) });
+    const r = run(GIT_GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) });
     expect(r.status).toBe(0);
 
     const dir = hooksDir(repo);
     expect(git(repo, 'config', '--local', '--get', 'core.hooksPath').stdout.trim()).toBe(dir);
     for (const hook of ['pre-commit', 'pre-push', 'commit-msg']) {
-      expect(readFileSync(join(dir, hook), 'utf8')).toContain('# ai-git-guardrails-managed: ai-git-guardrails.v0');
+      expect(readFileSync(join(dir, hook), 'utf8')).toContain('# git-guardrails-managed: git-guardrails.v0');
     }
   });
   test('legacy GUARDRAILS_TEMPLATES env var still resolves templates', () => {
     repo = newBareRepo();
     const env = envForRepo(repo);
-    delete env.AI_GIT_GUARDRAILS_TEMPLATES;
+    delete env.GIT_GUARDRAILS_TEMPLATES;
     env.GUARDRAILS_TEMPLATES = REPO_ROOT;
-    const r = run(AI_GIT_GUARDRAILS, ['install'], { cwd: repo, env });
+    const r = run(GIT_GUARDRAILS, ['install'], { cwd: repo, env });
     expect(r.status).toBe(0);
-    expect(readFileSync(join(hooksDir(repo), 'pre-commit'), 'utf8')).toContain('# ai-git-guardrails-managed: ai-git-guardrails.v0');
+    expect(readFileSync(join(hooksDir(repo), 'pre-commit'), 'utf8')).toContain('# git-guardrails-managed: git-guardrails.v0');
+  });
+
+  test('legacy AI_GIT_GUARDRAILS_TEMPLATES env var still resolves templates', () => {
+    repo = newBareRepo();
+    const env = envForRepo(repo);
+    delete env.GIT_GUARDRAILS_TEMPLATES;
+    env.AI_GIT_GUARDRAILS_TEMPLATES = REPO_ROOT;
+    const r = run(GIT_GUARDRAILS, ['install'], { cwd: repo, env });
+    expect(r.status).toBe(0);
+    expect(readFileSync(join(hooksDir(repo), 'pre-commit'), 'utf8')).toContain('# git-guardrails-managed: git-guardrails.v0');
   });
 
   test('legacy config dir is read when new config dir is absent', () => {
@@ -346,28 +356,43 @@ describe('Lifecycle commands', () => {
     const legacyConfigDir = join(repo, 'xdg', 'guardrails');
     mkdirSync(legacyConfigDir, { recursive: true });
     writeFileSync(join(legacyConfigDir, '.opt-out'), `${canonical}\n`);
-    expect(run(AI_GIT_GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) }).stdout).toContain('opt-out');
+    expect(run(GIT_GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) }).stdout).toContain('opt-out');
   });
 
-  test('uninstall preserves non-ours hooks and keeps non-ai-git-guardrails hooksPath', () => {
+  test('legacy ai-git-guardrails config dir is read when new config dir is absent', () => {
+    repo = newRepo();
+    const canonical = git(repo, 'rev-parse', '--show-toplevel').stdout.trim();
+    const legacyConfigDir = join(repo, 'xdg', 'ai-git-guardrails');
+    mkdirSync(legacyConfigDir, { recursive: true });
+    writeFileSync(join(legacyConfigDir, '.opt-out'), `${canonical}\n`);
+    expect(run(GIT_GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) }).stdout).toContain('opt-out');
+  });
+
+  test('legacy ai-git-guardrails entrypoint forwards to git-guardrails', () => {
+    const r = run(join(REPO_ROOT, 'ai-git-guardrails'), ['--version'], { env: testEnv(mkdtempSync(join(tmpdir(), 'git-guardrails-xdg-'))) });
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe('git-guardrails 0.9.0');
+  });
+
+  test('uninstall preserves non-ours hooks and keeps non-git-guardrails hooksPath', () => {
     repo = newBareRepo();
     const dir = join(repo, '.custom-hooks');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'pre-commit'), '#!/usr/bin/env bash\necho custom\n');
     git(repo, 'config', '--local', 'core.hooksPath', '.custom-hooks');
 
-    const r = run(AI_GIT_GUARDRAILS, ['uninstall'], { cwd: repo, env: envForRepo(repo) });
+    const r = run(GIT_GUARDRAILS, ['uninstall'], { cwd: repo, env: envForRepo(repo) });
     expect(r.status).toBe(0);
     expect(readFileSync(join(dir, 'pre-commit'), 'utf8')).toContain('echo custom');
     expect(git(repo, 'config', '--local', '--get', 'core.hooksPath').stdout.trim()).toBe('.custom-hooks');
   });
 
-  test('uninstall removes owned hooks and unsets ai-git-guardrails-owned hooksPath', () => {
+  test('uninstall removes owned hooks and unsets git-guardrails-owned hooksPath', () => {
     repo = newBareRepo();
-    expect(run(AI_GIT_GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) }).status).toBe(0);
+    expect(run(GIT_GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) }).status).toBe(0);
     const dir = hooksDir(repo);
 
-    const r = run(AI_GIT_GUARDRAILS, ['uninstall'], { cwd: repo, env: envForRepo(repo) });
+    const r = run(GIT_GUARDRAILS, ['uninstall'], { cwd: repo, env: envForRepo(repo) });
     expect(r.status).toBe(0);
     expect(existsSync(join(dir, 'pre-commit'))).toBe(false);
     expect(git(repo, 'config', '--local', '--get', 'core.hooksPath').status).not.toBe(0);
@@ -380,7 +405,20 @@ describe('Lifecycle commands', () => {
     writeFileSync(join(dir, 'pre-commit'), '#!/usr/bin/env bash\n# guardrails-managed: guardrails.v0\nexec guardrails run pre-commit "$@"\n');
     git(repo, 'config', '--local', 'core.hooksPath', dir);
 
-    const r = run(AI_GIT_GUARDRAILS, ['uninstall'], { cwd: repo, env: envForRepo(repo) });
+    const r = run(GIT_GUARDRAILS, ['uninstall'], { cwd: repo, env: envForRepo(repo) });
+    expect(r.status).toBe(0);
+    expect(existsSync(join(dir, 'pre-commit'))).toBe(false);
+    expect(git(repo, 'config', '--local', '--get', 'core.hooksPath').status).not.toBe(0);
+  });
+
+  test('uninstall removes legacy ai-git-guardrails hooks from existing installs', () => {
+    repo = newBareRepo();
+    const dir = hooksDir(repo);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'pre-commit'), '#!/usr/bin/env bash\n# ai-git-guardrails-managed: ai-git-guardrails.v0\nexec ai-git-guardrails run pre-commit "$@"\n');
+    git(repo, 'config', '--local', 'core.hooksPath', dir);
+
+    const r = run(GIT_GUARDRAILS, ['uninstall'], { cwd: repo, env: envForRepo(repo) });
     expect(r.status).toBe(0);
     expect(existsSync(join(dir, 'pre-commit'))).toBe(false);
     expect(git(repo, 'config', '--local', '--get', 'core.hooksPath').status).not.toBe(0);
@@ -393,13 +431,13 @@ describe('Lifecycle commands', () => {
     writeFileSync(join(dir, 'pre-push'), '#!/usr/bin/env bash\n# guardrails-managed: guardrails.v0\nexec guardrails run pre-push "$@"\n');
     git(repo, 'config', '--local', 'core.hooksPath', dir);
 
-    const r = run(AI_GIT_GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) });
+    const r = run(GIT_GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) });
     expect(r.status).toBe(0);
     expect(r.stdout + r.stderr).toContain('1 migrated from legacy');
 
     const hook = readFileSync(join(dir, 'pre-push'), 'utf8');
-    expect(hook).toContain('# ai-git-guardrails-managed: ai-git-guardrails.v0');
-    expect(hook).toContain('exec ai-git-guardrails run pre-push "$@"');
+    expect(hook).toContain('# git-guardrails-managed: git-guardrails.v0');
+    expect(hook).toContain('exec git-guardrails run pre-push "$@"');
     expect(hook).not.toContain('# guardrails-managed:');
     expect(hook).not.toContain('exec guardrails run');
   });
@@ -411,8 +449,8 @@ describe('Lifecycle commands', () => {
     writeFileSync(join(dir, 'pre-push'), '#!/usr/bin/env bash\n# guardrails-managed: guardrails.v0\nexec guardrails run pre-push "$@"\n');
     git(repo, 'config', '--local', 'core.hooksPath', dir);
 
-    const r = run(AI_GIT_GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) });
-    expect(r.stderr).toContain('WARN: stale legacy hook detected in .git/hooks/pre-push. Run `ai-git-guardrails install --force` to migrate.');
+    const r = run(GIT_GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) });
+    expect(r.stderr).toContain('WARN: stale legacy hook detected in .git/hooks/pre-push. Run `git-guardrails install --force` to migrate.');
     expect((r.stderr.match(/stale legacy hook detected/g) ?? []).length).toBe(1);
   });
 
@@ -421,17 +459,17 @@ describe('Lifecycle commands', () => {
     const dir = hooksDir(repo);
     writeFileSync(join(dir, 'pre-commit'), '#!/usr/bin/env bash\necho external\n');
 
-    const refused = run(AI_GIT_GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) });
+    const refused = run(GIT_GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) });
     expect(refused.stdout + refused.stderr).toContain('conflicts: 1');
 
-    const forced = run(AI_GIT_GUARDRAILS, ['install', '--force'], { cwd: repo, env: envForRepo(repo) });
+    const forced = run(GIT_GUARDRAILS, ['install', '--force'], { cwd: repo, env: envForRepo(repo) });
     expect(forced.status).toBe(0);
-    expect(readFileSync(join(dir, 'pre-commit'), 'utf8')).toContain('# ai-git-guardrails-managed: ai-git-guardrails.v0');
+    expect(readFileSync(join(dir, 'pre-commit'), 'utf8')).toContain('# git-guardrails-managed: git-guardrails.v0');
   });
 
   test('install --skip excludes requested hook', () => {
     repo = newBareRepo();
-    const r = run(AI_GIT_GUARDRAILS, ['install', '--skip', 'pre-push'], { cwd: repo, env: envForRepo(repo) });
+    const r = run(GIT_GUARDRAILS, ['install', '--skip', 'pre-push'], { cwd: repo, env: envForRepo(repo) });
     expect(r.status).toBe(0);
 
     const dir = hooksDir(repo);
@@ -442,12 +480,12 @@ describe('Lifecycle commands', () => {
 
   test('migrate dry-run reports changes without applying', () => {
     repo = newBareRepo();
-    const home = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-home-'));
+    const home = mkdtempSync(join(tmpdir(), 'git-guardrails-home-'));
     const legacy = join(home, '.git-hooks-personal');
     mkdirSync(legacy, { recursive: true });
     run('git', ['config', '--global', 'core.hooksPath', legacy], { env: { ...envForRepo(repo), HOME: home } });
 
-    const r = run(AI_GIT_GUARDRAILS, ['migrate'], { cwd: repo, env: { ...envForRepo(repo), HOME: home } });
+    const r = run(GIT_GUARDRAILS, ['migrate'], { cwd: repo, env: { ...envForRepo(repo), HOME: home } });
     expect(r.status).toBe(0);
     expect(r.stdout + r.stderr).toContain('DRY RUN');
     expect(run('git', ['config', '--global', '--get', 'core.hooksPath'], { env: { ...envForRepo(repo), HOME: home } }).stdout.trim()).toBe(legacy);
@@ -456,37 +494,37 @@ describe('Lifecycle commands', () => {
 
   test('migrate --apply unsets legacy global hooksPath and migrates opt-out', () => {
     repo = newBareRepo();
-    const home = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-home-'));
+    const home = mkdtempSync(join(tmpdir(), 'git-guardrails-home-'));
     const legacy = join(home, '.git-hooks-personal');
     mkdirSync(legacy, { recursive: true });
     writeFileSync(join(legacy, '.opt-out'), `${repo}\n`);
     run('git', ['config', '--global', 'core.hooksPath', legacy], { env: { ...envForRepo(repo), HOME: home } });
 
-    const r = run(AI_GIT_GUARDRAILS, ['migrate', '--apply'], { cwd: repo, env: { ...envForRepo(repo), HOME: home } });
+    const r = run(GIT_GUARDRAILS, ['migrate', '--apply'], { cwd: repo, env: { ...envForRepo(repo), HOME: home } });
     expect(r.status).toBe(0);
     expect(run('git', ['config', '--global', '--get', 'core.hooksPath'], { env: { ...envForRepo(repo), HOME: home } }).status).not.toBe(0);
-    expect(readFileSync(join(repo, 'xdg', 'ai-git-guardrails', '.opt-out'), 'utf8')).toContain(repo);
+    expect(readFileSync(join(repo, 'xdg', 'git-guardrails', '.opt-out'), 'utf8')).toContain(repo);
     cleanup(home);
   });
 
   test('doctor current repo renders structured detail', () => {
     repo = newBareRepo();
-    expect(run(AI_GIT_GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) }).status).toBe(0);
+    expect(run(GIT_GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) }).status).toBe(0);
 
-    const r = run(AI_GIT_GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) });
+    const r = run(GIT_GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('category');
     expect(r.stdout).toContain('installed');
     expect(r.stdout).toContain('pre-commit');
-    expect(r.stdout).toContain('installed (ai-git-guardrails)');
+    expect(r.stdout).toContain('installed (git-guardrails)');
   });
 
   test('doctor --all summary agrees with current repo classification', () => {
     repo = newBareRepo();
-    expect(run(AI_GIT_GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) }).status).toBe(0);
+    expect(run(GIT_GUARDRAILS, ['install'], { cwd: repo, env: envForRepo(repo) }).status).toBe(0);
 
-    const current = run(AI_GIT_GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) });
-    const all = run(AI_GIT_GUARDRAILS, ['doctor', '--all', '--root', repo], { env: envForRepo(repo) });
+    const current = run(GIT_GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) });
+    const all = run(GIT_GUARDRAILS, ['doctor', '--all', '--root', repo], { env: envForRepo(repo) });
 
     expect(current.status).toBe(0);
     expect(all.status).toBe(0);
@@ -497,7 +535,7 @@ describe('Lifecycle commands', () => {
   });
 
   test('doctor --all preserves repo paths containing spaces', () => {
-    const scanRoot = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-spaces-'));
+    const scanRoot = mkdtempSync(join(tmpdir(), 'git-guardrails-spaces-'));
     try {
       const spaceParent = join(scanRoot, 'My Projects');
       const spaceRepo = join(spaceParent, 'foo');
@@ -506,10 +544,10 @@ describe('Lifecycle commands', () => {
       mkdirSync(configHome, { recursive: true });
       git(spaceRepo, 'init', '-q', '-b', 'main');
       git(spaceRepo, 'config', 'user.email', 'test@example.com');
-      git(spaceRepo, 'config', 'user.name', 'ai-git-guardrails-test');
-      expect(run(AI_GIT_GUARDRAILS, ['install', '--force'], { cwd: spaceRepo, env: testEnv(configHome) }).status).toBe(0);
+      git(spaceRepo, 'config', 'user.name', 'git-guardrails-test');
+      expect(run(GIT_GUARDRAILS, ['install', '--force'], { cwd: spaceRepo, env: testEnv(configHome) }).status).toBe(0);
 
-      const r = run(AI_GIT_GUARDRAILS, ['doctor', '--all', '--root', scanRoot], { env: testEnv(configHome) });
+      const r = run(GIT_GUARDRAILS, ['doctor', '--all', '--root', scanRoot], { env: testEnv(configHome) });
       const expected = 'My Projects/foo';
       expect(r.status).toBe(0);
       expect((r.stdout.match(new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) ?? []).length).toBe(1);
@@ -521,17 +559,17 @@ describe('Lifecycle commands', () => {
 
   test('global-template generate writes init template and configures git', () => {
     repo = newBareRepo();
-    const home = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-home-'));
+    const home = mkdtempSync(join(tmpdir(), 'git-guardrails-home-'));
     const dataHome = join(repo, 'xdg-data');
     const env = { ...envForRepo(repo), HOME: home, XDG_DATA_HOME: dataHome };
 
-    const r = run(AI_GIT_GUARDRAILS, ['global-template', 'generate'], { cwd: repo, env });
+    const r = run(GIT_GUARDRAILS, ['global-template', 'generate'], { cwd: repo, env });
     expect(r.status).toBe(0);
 
-    const templateDir = join(dataHome, 'ai-git-guardrails', 'git-template');
+    const templateDir = join(dataHome, 'git-guardrails', 'git-template');
     expect(run('git', ['config', '--global', '--get', 'init.templateDir'], { env }).stdout.trim()).toBe(templateDir);
     for (const hook of ['pre-commit', 'pre-push', 'commit-msg']) {
-      expect(readFileSync(join(templateDir, 'hooks', hook), 'utf8')).toContain('# ai-git-guardrails-managed: ai-git-guardrails.v0');
+      expect(readFileSync(join(templateDir, 'hooks', hook), 'utf8')).toContain('# git-guardrails-managed: git-guardrails.v0');
     }
     cleanup(home);
   });
@@ -545,7 +583,7 @@ describe('Doctor handles worktrees correctly', () => {
   let wtCanonical: string;
   beforeEach(() => {
     // Use a shared scan root containing both parent repo and worktree.
-    scanRoot = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-doctor-'));
+    scanRoot = mkdtempSync(join(tmpdir(), 'git-guardrails-doctor-'));
     parent = join(scanRoot, 'parent');
     mkdirSync(parent);
     git(parent, 'init', '-q', '-b', 'main');
@@ -556,7 +594,7 @@ describe('Doctor handles worktrees correctly', () => {
     git(parent, 'commit', '-q', '-m', 'feat: init');
     const configHome = join(scanRoot, 'xdg');
     mkdirSync(configHome, { recursive: true });
-    const install = run(AI_GIT_GUARDRAILS, ['install', '--force'], { cwd: parent, env: testEnv(configHome) });
+    const install = run(GIT_GUARDRAILS, ['install', '--force'], { cwd: parent, env: testEnv(configHome) });
     expect(install.status).toBe(0);
     git(parent, 'branch', 'other');
     wt = join(scanRoot, 'wt');
@@ -570,7 +608,7 @@ describe('Doctor handles worktrees correctly', () => {
   });
 
   test('worktree (with .git file, not directory) is detected as enrolled', () => {
-    const r = run(AI_GIT_GUARDRAILS, ['doctor', '--all', '--root', scanRoot], { env: testEnv(join(scanRoot, 'xdg')) });
+    const r = run(GIT_GUARDRAILS, ['doctor', '--all', '--root', scanRoot], { env: testEnv(join(scanRoot, 'xdg')) });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('2 repos');
     expect(r.stdout).toContain('  ✓ parent');
@@ -589,7 +627,7 @@ describe('universal checks registry', () => {
   };
 
   function registryEntries(): RegistryEntry[] {
-    const r = run('bash', ['-c', 'source checks/registry.sh; printf "%s\\n" "${AI_GIT_GUARDRAILS_CHECKS[@]}"'], { cwd: REPO_ROOT });
+    const r = run('bash', ['-c', 'source checks/registry.sh; printf "%s\\n" "${GIT_GUARDRAILS_CHECKS[@]}"'], { cwd: REPO_ROOT });
     expect(r.status).toBe(0);
     return r.stdout.trim().split('\n').filter(Boolean).map((line) => {
       const fields = line.split('|');
@@ -599,16 +637,16 @@ describe('universal checks registry', () => {
     });
   }
 
-  function registryTools(arrayName: 'AI_GIT_GUARDRAILS_REQUIRED_TOOLS' | 'AI_GIT_GUARDRAILS_OPTIONAL_TOOLS'): string[] {
+  function registryTools(arrayName: 'GIT_GUARDRAILS_REQUIRED_TOOLS' | 'GIT_GUARDRAILS_OPTIONAL_TOOLS'): string[] {
     const r = run('bash', ['-c', `source checks/registry.sh; printf "%s\\n" "\${${arrayName}[@]}"`], { cwd: REPO_ROOT });
     expect(r.status).toBe(0);
     return r.stdout.trim().split('\n').filter(Boolean);
   }
 
   test('registry loads cleanly', () => {
-    const r = run('bash', ['-c', 'source checks/registry.sh; declare -p AI_GIT_GUARDRAILS_CHECKS'], { cwd: REPO_ROOT });
+    const r = run('bash', ['-c', 'source checks/registry.sh; declare -p GIT_GUARDRAILS_CHECKS'], { cwd: REPO_ROOT });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('AI_GIT_GUARDRAILS_CHECKS');
+    expect(r.stdout).toContain('GIT_GUARDRAILS_CHECKS');
   });
 
   test('every registry entry has five non-empty fields', () => {
@@ -636,10 +674,10 @@ describe('universal checks registry', () => {
   });
 
   test('required registry tools are reachable in CI', () => {
-    for (const tool of registryTools('AI_GIT_GUARDRAILS_REQUIRED_TOOLS')) {
-      const r = run('bash', ['-c', `source "${AI_GIT_GUARDRAILS}"; have "$1"`, 'bash', tool], {
+    for (const tool of registryTools('GIT_GUARDRAILS_REQUIRED_TOOLS')) {
+      const r = run('bash', ['-c', `source "${GIT_GUARDRAILS}"; have "$1"`, 'bash', tool], {
         cwd: REPO_ROOT,
-        env: testEnv(mkdtempSync(join(tmpdir(), 'ai-git-guardrails-xdg-'))),
+        env: testEnv(mkdtempSync(join(tmpdir(), 'git-guardrails-xdg-'))),
       });
       expect(r.status, tool).toBe(0);
     }
@@ -648,9 +686,9 @@ describe('universal checks registry', () => {
   test('doctor reachability output matches registry tool list', () => {
     const repo = newBareRepo();
     try {
-      const r = run(AI_GIT_GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) });
+      const r = run(GIT_GUARDRAILS, ['doctor'], { cwd: repo, env: envForRepo(repo) });
       expect(r.status).toBe(0);
-      for (const tool of [...registryTools('AI_GIT_GUARDRAILS_REQUIRED_TOOLS'), ...registryTools('AI_GIT_GUARDRAILS_OPTIONAL_TOOLS')]) {
+      for (const tool of [...registryTools('GIT_GUARDRAILS_REQUIRED_TOOLS'), ...registryTools('GIT_GUARDRAILS_OPTIONAL_TOOLS')]) {
         expect(r.stdout, tool).toContain(`${tool} reachable`);
       }
     } finally {
@@ -671,7 +709,7 @@ describe('hook classifier', () => {
   }
 
   function classify(hook: string, env: NodeJS.ProcessEnv = envForRepo(repo)): SpawnResult {
-    return run('bash', ['-c', `source "${AI_GIT_GUARDRAILS}"; _classify_hook "${hooksDir()}" "${hook}"`], { cwd: repo, env });
+    return run('bash', ['-c', `source "${GIT_GUARDRAILS}"; _classify_hook "${hooksDir()}" "${hook}"`], { cwd: repo, env });
   }
 
   test('absent', () => {
@@ -693,8 +731,13 @@ describe('hook classifier', () => {
     expect(classify('pre-commit').stdout.trim()).toBe('ours-legacy');
   });
 
+  test('legacy ai-git-guardrails marker is classified as legacy ours', () => {
+    writeFileSync(join(hooksDir(), 'pre-commit'), '#!/usr/bin/env bash\n# ai-git-guardrails-managed: ai-git-guardrails.v0\nexec ai-git-guardrails run pre-commit "$@"\n');
+    expect(classify('pre-commit').stdout.trim()).toBe('ours-legacy');
+  });
+
   test('opt-out', () => {
-    const optOutDir = join(repo, 'xdg', 'ai-git-guardrails');
+    const optOutDir = join(repo, 'xdg', 'git-guardrails');
     mkdirSync(optOutDir, { recursive: true });
     const canonical = git(repo, 'rev-parse', '--show-toplevel').stdout.trim();
     writeFileSync(join(optOutDir, '.opt-out'), `${canonical}\n`);
@@ -707,7 +750,7 @@ describe('hook classifier', () => {
   });
 
   test('shadowed by global core.hooksPath', () => {
-    const home = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-home-'));
+    const home = mkdtempSync(join(tmpdir(), 'git-guardrails-home-'));
     git(repo, 'config', '--local', '--unset', 'core.hooksPath');
     run('git', ['config', '--global', 'core.hooksPath', '.global-hooks'], { env: { ...envForRepo(repo), HOME: home } });
     expect(classify('pre-commit', { ...envForRepo(repo), HOME: home }).stdout.trim()).toBe('shadowed');
@@ -717,27 +760,27 @@ describe('hook classifier', () => {
 
 describe('compose snippets', () => {
   function compose(hook: string, mode: string): SpawnResult {
-    return run('bash', ['-c', `source "${AI_GIT_GUARDRAILS}"; _compose_snippet "$1" "$2"`, 'bash', hook, mode], {
-      env: testEnv(mkdtempSync(join(tmpdir(), 'ai-git-guardrails-xdg-'))),
+    return run('bash', ['-c', `source "${GIT_GUARDRAILS}"; _compose_snippet "$1" "$2"`, 'bash', hook, mode], {
+      env: testEnv(mkdtempSync(join(tmpdir(), 'git-guardrails-xdg-'))),
     });
   }
 
   test('standalone commit-msg forwards hook arguments', () => {
     const r = compose('commit-msg', 'standalone');
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('exec ai-git-guardrails run commit-msg "$@"');
+    expect(r.stdout).toContain('exec git-guardrails run commit-msg "$@"');
   });
 
   test('embedded pre-push preserves stdin', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-compose-'));
+    const dir = mkdtempSync(join(tmpdir(), 'git-guardrails-compose-'));
     try {
-      const bin = join(dir, 'ai-git-guardrails');
+      const bin = join(dir, 'git-guardrails');
       const stdinFile = join(dir, 'stdin');
       const argsFile = join(dir, 'args');
       writeFileSync(bin, `#!/usr/bin/env bash
 printf '%s\\n' "$*" > "${argsFile}"
 cat > "${stdinFile}"
-exit "\${FAKE_AI_GIT_GUARDRAILS_STATUS:-0}"
+exit "\${FAKE_GIT_GUARDRAILS_STATUS:-0}"
 `);
       chmodSync(bin, 0o755);
 
@@ -756,12 +799,12 @@ exit "\${FAKE_AI_GIT_GUARDRAILS_STATUS:-0}"
     }
   });
 
-  test('embedded mode propagates non-zero ai-git-guardrails status', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'ai-git-guardrails-compose-'));
+  test('embedded mode propagates non-zero git-guardrails status', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'git-guardrails-compose-'));
     try {
-      const bin = join(dir, 'ai-git-guardrails');
+      const bin = join(dir, 'git-guardrails');
       writeFileSync(bin, `#!/usr/bin/env bash
-exit "\${FAKE_AI_GIT_GUARDRAILS_STATUS:-0}"
+exit "\${FAKE_GIT_GUARDRAILS_STATUS:-0}"
 `);
       chmodSync(bin, 0o755);
 
@@ -771,7 +814,7 @@ echo unreachable`], {
         env: {
           ...testEnv(join(dir, 'xdg')),
           PATH: `${dir}:${process.env.PATH ?? ''}`,
-          FAKE_AI_GIT_GUARDRAILS_STATUS: '17',
+          FAKE_GIT_GUARDRAILS_STATUS: '17',
         },
       });
 
@@ -785,7 +828,7 @@ echo unreachable`], {
   test('bypass-help emits a single pastable shell line', () => {
     const r = compose('pre-commit', 'bypass-help');
     expect(r.status).toBe(0);
-    expect(r.stdout.trim()).toBe('SKIP_LARGE_FILES=1 SKIP_GITLEAKS=1 SKIP_ACTIONLINT=1 ai-git-guardrails run pre-commit "$@" || true');
+    expect(r.stdout.trim()).toBe('SKIP_LARGE_FILES=1 SKIP_GITLEAKS=1 SKIP_ACTIONLINT=1 git-guardrails run pre-commit "$@" || true');
     expect(r.stdout.trim()).not.toContain('\n');
     expect(run('bash', ['-n'], { input: r.stdout }).status).toBe(0);
   });

@@ -33,13 +33,13 @@ jobs:
 
       - name: Lint shell scripts
         run: |
-          bash -n ai-git-guardrails
+          bash -n git-guardrails
           bash -n checks/registry.sh
           for f in checks/*.sh; do bash -n "$f"; done
 
       - name: Run test suite
         # Tests use bun:test; no package.json required.
-        run: bun test tests/ai-git-guardrails.test.ts
+        run: bun test tests/git-guardrails.test.ts
 
       - name: Smoke check
-        run: ./ai-git-guardrails --version
+        run: ./git-guardrails --version

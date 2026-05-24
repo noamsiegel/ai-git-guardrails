@@ -25,7 +25,7 @@ What happened instead?
 ## Environment
 
 - OS:
-- ai-git-guardrails commit or version:
+- git-guardrails commit or version:
 - bash version:
 - lefthook version:
 - gitleaks version:
